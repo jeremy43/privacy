@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cPickle
+import pickle
 import gzip
 import math
 import numpy as np
@@ -155,7 +155,7 @@ def unpickle_cifar_dic(file):
   :return: tuple of (images, labels)
   """
   fo = open(file, 'rb')
-  dict = cPickle.load(fo)
+  dict = pickle.load(fo)
   fo.close()
   return dict['data'], dict['labels']
 

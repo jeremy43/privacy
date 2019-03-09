@@ -19,10 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-
-from differential_privacy.multiple_teachers import deep_cnn
-from differential_privacy.multiple_teachers import input
-from differential_privacy.multiple_teachers import metrics
+import deep_cnn
+import input
+import metrics
 
 
 tf.flags.DEFINE_string('dataset', 'svhn', 'The name of the dataset to use')
