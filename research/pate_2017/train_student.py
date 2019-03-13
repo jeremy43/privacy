@@ -32,15 +32,15 @@ FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
 tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
-tf.flags.DEFINE_string('data_dir','/tmp','Temporary storage')
-tf.flags.DEFINE_string('train_dir','/tmp/train_dir','Where model chkpt are saved')
-tf.flags.DEFINE_string('teachers_dir','/tmp/train_dir',
+tf.flags.DEFINE_string('data_dir','/home/yq/privacy/research/pate_2017','Temporary storage')
+tf.flags.DEFINE_string('train_dir','/home/yq/privacy/research/pate_2017/models','Where model chkpt are saved')
+tf.flags.DEFINE_string('teachers_dir','/home/yq/privacy/research/pate_2017/models',
                        'Directory where teachers checkpoints are stored.')
 
 tf.flags.DEFINE_integer('teachers_max_steps', 3000,
                         'Number of steps teachers were ran.')
 tf.flags.DEFINE_integer('max_steps', 3000, 'Number of steps to run student.')
-tf.flags.DEFINE_integer('nb_teachers', 10, 'Teachers in the ensemble.')
+tf.flags.DEFINE_integer('nb_teachers', 50, 'Teachers in the ensemble.')
 tf.flags.DEFINE_integer('stdnt_share', 1000,
                         'Student share (last index) of the test data')
 tf.flags.DEFINE_integer('lap_scale', 10,
@@ -185,8 +185,9 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
       np.save(file_obj, labels_for_dump)
 
   # Print accuracy of aggregated labels
-  ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels[:FLAGS.stdnt_share])
-  print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
+  if shift_data is None:
+    ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels)
+    print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
 
 
@@ -200,7 +201,7 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
 
   return stdnt_data, stdnt_labels
 
-def shift_student(student_pred, stdnt_labels):
+def shift_student(stdnt_data, student_pred, stdnt_labels):
   """
   This function shift student_data with a paramenter alpha
   :param student_data:
@@ -220,6 +221,8 @@ def shift_student(student_pred, stdnt_labels):
   shift_dataset['pred'] = shift_data
   shift_dataset['label'] = shift_label
   shift_dataset['shift_ratio'] = ratio
+  shift_dataset['data'] = stdnt_data[index]
+  shift_dataset['index'] = index
   return shift_dataset
 def obtain_weight(student_data, nb_teacher):
   """
@@ -238,8 +241,7 @@ def obtain_weight(student_data, nb_teacher):
   _, teacher_pred, teacher_test = predict_data(student_data, nb_teacher, teacher = True)
   # Unpack the student dataset
   stdnt_data, stdnt_pred, stdnt_test = predict_data(student_data, nb_teacher, teacher=False)
-  shift_dataset= shift_student(stdnt_pred, stdnt_test)
-  shift_dataset['data'] = stdnt_data
+  shift_dataset= shift_student(stdnt_data, stdnt_pred, stdnt_test)
   #students' prediction after shift
   stdnt_pred = shift_dataset['pred']
   stdnt_labels = shift_dataset['label']
@@ -276,9 +278,9 @@ def train_student(dataset, nb_teachers,inverse_w = None, shift_dataset = None):
   :return: True if student training went well
   """
   assert input.create_dir_if_needed(FLAGS.train_dir)
-
+  print('len of shift data'.format(len(shift_dataset['data'])))
   # Call helper function to prepare student data using teacher predictions
-  stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_dataset = shift_dataset['data'])
+  stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_data = shift_dataset['data'])
 
   # Unpack the student dataset, here stdnt_labels are already the ensemble noisy version
   if shift_dataset is not None:
@@ -292,11 +294,11 @@ def train_student(dataset, nb_teachers,inverse_w = None, shift_dataset = None):
 
   # Start student training
   weights = np.zeros(len(stdnt_data))
-
+  print('len of weight={} len of labels= {} '.format(len(weights), len(stdnt_labels)))
   for i, x in enumerate(weights):
     weights[i] = np.float32(inverse_w[stdnt_labels[i]])
-  assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
-
+  #assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
+  deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path)
   # Compute final checkpoint name for student (with max number of steps)
   ckpt_path_final = ckpt_path + '-' + str(FLAGS.max_steps - 1)
   private_data, private_labels = input.ld_mnist(test_only = False, train_only = True)
@@ -312,7 +314,7 @@ def train_student(dataset, nb_teachers,inverse_w = None, shift_dataset = None):
 
 def main(argv=None): # pylint: disable=unused-argument
   # Run student training according to values specified in flags
-  shift_dataset, inverse_w = obtain_weight(FLAGS.dataset, 1)
+  shift_dataset, inverse_w = obtain_weight(FLAGS.dataset, 2)
   assert train_student(FLAGS.dataset, FLAGS.nb_teachers, inverse_w, shift_dataset)
 
 if __name__ == '__main__':
