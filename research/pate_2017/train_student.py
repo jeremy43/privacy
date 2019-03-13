@@ -22,14 +22,14 @@ import numpy as np
 from six.moves import xrange
 import tensorflow as tf
 
-from differential_privacy.multiple_teachers import aggregation
-from differential_privacy.multiple_teachers import deep_cnn
-from differential_privacy.multiple_teachers import input
-from differential_privacy.multiple_teachers import metrics
+import aggregation
+import deep_cnn
+import input
+import metrics
 
 FLAGS = tf.flags.FLAGS
 
-tf.flags.DEFINE_string('dataset', 'svhn', 'The name of the dataset to use')
+tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
 tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
 tf.flags.DEFINE_string('data_dir','/tmp','Temporary storage')
@@ -70,7 +70,7 @@ def ensemble_preds(dataset, nb_teachers, stdnt_data):
   # Create array that will hold result
   result = np.zeros(result_shape, dtype=np.float32)
 
-  # Get predictions from each teacher
+  # Get predictions from each teacher #should start at 0
   for teacher_id in xrange(nb_teachers):
     # Compute path of checkpoint file for teacher model with ID teacher_id
     if FLAGS.deeper:
@@ -86,8 +86,43 @@ def ensemble_preds(dataset, nb_teachers, stdnt_data):
 
   return result
 
+def predict_data(dataset, nb_teachers, teacher = False):
+  """
+  This is for obtaining the weight from student / teache, don't involve any noise
+  :param dataset:  string corresponding to mnist, cifar10, or svhn
+  :param nb_teachers: number of teachers (in the ensemble) to learn from
+  :param teacher: if teacher is true, then predict with training dataset, else students
+  :return: out prediction based on cnn
+  """
+  assert input.create_dir_if_needed(FLAGS.train_dir)
+  if teacher:
+    train_only = True
+    test_only  = False
+  else:
+    train_only = False
+    test_only =True
 
-def prepare_student_data(dataset, nb_teachers, save=False):
+  # Load the dataset
+  if dataset == 'svhn':
+    test_data, test_labels = input.ld_svhn(test_only, train_only)
+  elif dataset == 'cifar10':
+    test_data, test_labels = input.ld_cifar10(test_only, train_only)
+  elif dataset == 'mnist':
+    test_data, test_labels = input.ld_mnist(test_only, train_only)
+  else:
+    print("Check value of dataset flag")
+    return False
+
+  teachers_preds = ensemble_preds(dataset, nb_teachers, test_data)
+
+  # Aggregate teacher predictions to get student training labels
+  pred_labels = aggregation.noisy_max(teachers_preds, 0)
+  # Print accuracy of aggregated labels
+  ac_ag_labels = metrics.accuracy(pred_labels, test_labels)
+  print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
+  return test_data, pred_labels, test_labels
+
+def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
   """
   Takes a dataset name and the size of the teacher ensemble and prepares
   training data for the student model, according to parameters indicated
@@ -117,7 +152,13 @@ def prepare_student_data(dataset, nb_teachers, save=False):
   assert FLAGS.stdnt_share < len(test_data)
 
   # Prepare [unlabeled] student training data (subset of test set)
-  stdnt_data = test_data[:FLAGS.stdnt_share]
+  stdnt_data = test_data
+
+  if shift_data is not None:
+      #no noise
+    # replace original student data with shift data
+
+    stdnt_data = shift_data
 
   # Compute teacher predictions for student training data
   teachers_preds = ensemble_preds(dataset, nb_teachers, stdnt_data)
@@ -147,9 +188,7 @@ def prepare_student_data(dataset, nb_teachers, save=False):
   ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels[:FLAGS.stdnt_share])
   print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
-  # Store unused part of test set for use as a test set after student training
-  stdnt_test_data = test_data[FLAGS.stdnt_share:]
-  stdnt_test_labels = test_labels[FLAGS.stdnt_share:]
+
 
   if save:
     # Prepare filepath for numpy dump of labels produced by noisy aggregation
@@ -159,10 +198,75 @@ def prepare_student_data(dataset, nb_teachers, save=False):
     with tf.gfile.Open(filepath, mode='w') as file_obj:
       np.save(file_obj, stdnt_labels)
 
-  return stdnt_data, stdnt_labels, stdnt_test_data, stdnt_test_labels
+  return stdnt_data, stdnt_labels
+
+def shift_student(student_pred, stdnt_labels):
+  """
+  This function shift student_data with a paramenter alpha
+  :param student_data:
+  :return: student data with shift y
+  """
+  shift_position = 5
+  index_out = np.where(stdnt_labels == shift_position)
+  # keep ratio
+  ratio = 0.5
+  index_remain = index_out[0][0:int(ratio * len(index_out[0]))]
+  index_keep = np.where(stdnt_labels!= 5)
+  index_keep = index_keep[0]
+  index = np.concatenate((index_remain, index_keep))
+  shift_data = student_pred[index]
+  shift_label = stdnt_labels[index]
+  shift_dataset = {}
+  shift_dataset['pred'] = shift_data
+  shift_dataset['label'] = shift_label
+  shift_dataset['shift_ratio'] = ratio
+  return shift_dataset
+def obtain_weight(student_data, nb_teacher):
+  """
+  This function use pretrained model on nb_teacher to obtain the importance weight of student/teacher
+  we assue the student dataset is unlabeled
+  we use the whole training set as private one for teacher
+  and the whole test set as public one for student
+
+  :param teacher_data:
+  :param student_data: unshift student_data
+  :param nb_teacher:
+  :return: an importance weight of student(y)/teacher(y)
+  """
+  assert input.create_dir_if_needed(FLAGS.train_dir)
+  # Call helper function to prepare student data using teacher predictions
+  _, teacher_pred, teacher_test = predict_data(student_data, nb_teacher, teacher = True)
+  # Unpack the student dataset
+  stdnt_data, stdnt_pred, stdnt_test = predict_data(student_data, nb_teacher, teacher=False)
+  shift_dataset= shift_student(stdnt_pred, stdnt_test)
+  shift_dataset['data'] = stdnt_data
+  #students' prediction after shift
+  stdnt_pred = shift_dataset['pred']
+  stdnt_labels = shift_dataset['label']
+  # model_path = FLAGS.train_dir + '/' + 'mnist_250_teachers_1.ckpt-2999'
+  # Compute student label predictions
+  #
+  # student_preds = deep_cnn.softmax_preds(stdnt_data, model_path)
+  # # Here we use the test dataset of students to estimate teacher, since they are from same distution
+  # student_preds =np.argmax(student_preds, axis = 1)
+  # teacher_estimate = deep_cnn.softmax_preds(stdnt_test_data, model_path)
+  # teacher_estimate = np.argmax(teacher_estimate, axis=1)
+  num_class = np.max(stdnt_test) +1
+  # mu is average predict in student
+  mu = np.zeros(num_class)
+  for ind in range(num_class):
+    mu[ind] = np.sum(stdnt_pred==ind)
+  mu = mu /len(stdnt_pred)
+  cov = np.zeros([num_class, num_class])
+  for index, x in enumerate(teacher_pred):
+    cov[x, teacher_test[index]] += 1
+  cov = cov / len(teacher_test)
+  np.reciprocal(mu, mu)
+  inverse_w = np.dot(cov, mu)
+  return shift_dataset, inverse_w
 
 
-def train_student(dataset, nb_teachers):
+def train_student(dataset, nb_teachers,inverse_w = None, shift_dataset = None):
   """
   This function trains a student using predictions made by an ensemble of
   teachers. The student and teacher models are trained using the same
@@ -174,11 +278,12 @@ def train_student(dataset, nb_teachers):
   assert input.create_dir_if_needed(FLAGS.train_dir)
 
   # Call helper function to prepare student data using teacher predictions
-  stdnt_dataset = prepare_student_data(dataset, nb_teachers, save=True)
+  stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_dataset = shift_dataset['data'])
 
-  # Unpack the student dataset
-  stdnt_data, stdnt_labels, stdnt_test_data, stdnt_test_labels = stdnt_dataset
-
+  # Unpack the student dataset, here stdnt_labels are already the ensemble noisy version
+  if shift_dataset is not None:
+    stdnt_data = shift_dataset['data']
+    stdnt_labels = shift_dataset['label']
   # Prepare checkpoint filename and path
   if FLAGS.deeper:
     ckpt_path = FLAGS.train_dir + '/' + str(dataset) + '_' + str(nb_teachers) + '_student_deeper.ckpt' #NOLINT(long-line)
@@ -186,23 +291,29 @@ def train_student(dataset, nb_teachers):
     ckpt_path = FLAGS.train_dir + '/' + str(dataset) + '_' + str(nb_teachers) + '_student.ckpt'  # NOLINT(long-line)
 
   # Start student training
-  assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path)
+  weights = np.zeros(len(stdnt_data))
+
+  for i, x in enumerate(weights):
+    weights[i] = np.float32(inverse_w[stdnt_labels[i]])
+  assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
 
   # Compute final checkpoint name for student (with max number of steps)
   ckpt_path_final = ckpt_path + '-' + str(FLAGS.max_steps - 1)
-
+  private_data, private_labels = input.ld_mnist(test_only = False, train_only = True)
   # Compute student label predictions on remaining chunk of test set
-  student_preds = deep_cnn.softmax_preds(stdnt_test_data, ckpt_path_final)
-
+  teacher_preds = deep_cnn.softmax_preds(private_data, ckpt_path_final)
+  student_preds =  deep_cnn.softmax_preds(stdnt_data, ckpt_path_final)
   # Compute teacher accuracy
-  precision = metrics.accuracy(student_preds, stdnt_test_labels)
-  print('Precision of student after training: ' + str(precision))
+  precision_t = metrics.accuracy(teacher_preds, private_labels)
+  precision_s  = metrics.accuracy(student_preds, stdnt_labels)
+  print('shift_ratio={} Precision of teacher after training:{} student={}'.format(shift_dataset['shift_ratio'], precision_t, precision_s))
 
   return True
 
 def main(argv=None): # pylint: disable=unused-argument
   # Run student training according to values specified in flags
-  assert train_student(FLAGS.dataset, FLAGS.nb_teachers)
+  shift_dataset, inverse_w = obtain_weight(FLAGS.dataset, 1)
+  assert train_student(FLAGS.dataset, FLAGS.nb_teachers, inverse_w, shift_dataset)
 
 if __name__ == '__main__':
   tf.app.run()

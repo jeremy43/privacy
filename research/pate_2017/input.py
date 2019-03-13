@@ -261,7 +261,7 @@ def extract_mnist_data(filename, num_images, image_size, pixel_depth):
   """
   # if not os.path.exists(file):
   if not tf.gfile.Exists(filename+".npy"):
-    with gzip.open(filename) as bytestream:
+    with gzip.open(filename,'rb') as bytestream:
       bytestream.read(16)
       buf = bytestream.read(image_size * image_size * num_images)
       data = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)
@@ -270,7 +270,7 @@ def extract_mnist_data(filename, num_images, image_size, pixel_depth):
       np.save(filename, data)
       return data
   else:
-    with tf.gfile.Open(filename+".npy", mode='r') as file_obj:
+    with tf.gfile.Open(filename+".npy", mode='rb') as file_obj:
       return np.load(file_obj)
 
 
@@ -280,18 +280,18 @@ def extract_mnist_labels(filename, num_images):
   """
   # if not os.path.exists(file):
   if not tf.gfile.Exists(filename+".npy"):
-    with gzip.open(filename) as bytestream:
+    with gzip.open(filename,'rb') as bytestream:
       bytestream.read(8)
       buf = bytestream.read(1 * num_images)
       labels = np.frombuffer(buf, dtype=np.uint8).astype(np.int32)
       np.save(filename, labels)
     return labels
   else:
-    with tf.gfile.Open(filename+".npy", mode='r') as file_obj:
+    with tf.gfile.Open(filename+".npy", mode='rb') as file_obj:
       return np.load(file_obj)
 
 
-def ld_svhn(extended=False, test_only=False):
+def ld_svhn(extended=False, test_only=False, train_only = False):
   """
   Load the original SVHN data
   :param extended: include extended training data in the returned array
@@ -331,11 +331,14 @@ def ld_svhn(extended=False, test_only=False):
 
       return train_data, train_labels, test_data, test_labels
     else:
+      if train_only:
+        return train_data, train_labels
       # Return training and extended training data separately
-      return train_data,train_labels, test_data,test_labels, ext_data,ext_labels
+      else:
+        return train_data,train_labels, test_data,test_labels, ext_data,ext_labels
 
 
-def ld_cifar10(test_only=False):
+def ld_cifar10(test_only=False, train_only = False):
   """
   Load the original CIFAR10 data
   :param extended: include extended training data in the returned array
@@ -361,10 +364,13 @@ def ld_cifar10(test_only=False):
   if test_only:
     return test_data, test_labels
   else:
-    return train_data, train_labels, test_data, test_labels
+    if train_only:
+      return train_data, train_labels
+    else:
+      return train_data, train_labels, test_data, test_labels
 
 
-def ld_mnist(test_only=False):
+def ld_mnist(test_only=False, train_only = False):
   """
   Load the MNIST dataset
   :param extended: include extended training data in the returned array
@@ -390,6 +396,8 @@ def ld_mnist(test_only=False):
 
   if test_only:
     return test_data, test_labels
+  elif train_only:
+    return train_data, train_labels
   else:
     return train_data, train_labels, test_data, test_labels
 

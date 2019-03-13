@@ -23,8 +23,7 @@ import numpy as np
 from six.moves import xrange
 import tensorflow as tf
 import time
-
-from differential_privacy.multiple_teachers import utils
+import utils
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -324,7 +323,7 @@ def inference_deeper(images, dropout=False):
   return logits
 
 
-def loss_fun(logits, labels):
+def loss_fun(logits, labels, weights = None):
   """Add L2Loss to all the trainable variables.
 
   Add summary for "Loss" and "Loss/avg".
@@ -341,10 +340,12 @@ def loss_fun(logits, labels):
 
   # Calculate the cross entropy between labels and predictions
   labels = tf.cast(labels, tf.int64)
-  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      logits=logits, labels=labels, name='cross_entropy_per_example')
+  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels,
+                                                                 name='cross_entropy_per_example')
 
-  # Calculate the average cross entropy loss across the batch.
+  if weights is not None:
+    cross_entropy = cross_entropy * weights
+  #Calculate the average cross entropy loss across the batch.
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
 
   # Add to TF collection for losses
@@ -444,7 +445,7 @@ def _input_placeholder():
   return tf.placeholder(tf.float32, shape=train_node_shape)
 
 
-def train(images, labels, ckpt_path, dropout=False):
+def train(images, labels, ckpt_path, weights=None,dropout=False):
   """
   This function contains the loop that actually trains the model.
   :param images: a numpy array with the input data
@@ -456,6 +457,7 @@ def train(images, labels, ckpt_path, dropout=False):
 
   # Check training data
   assert len(images) == len(labels)
+  #assert len(weights) == len(labels)
   assert images.dtype == np.float32
   assert labels.dtype == np.int32
 
@@ -469,7 +471,10 @@ def train(images, labels, ckpt_path, dropout=False):
     # Create a placeholder to hold labels
     train_labels_shape = (FLAGS.batch_size,)
     train_labels_node = tf.placeholder(tf.int32, shape=train_labels_shape)
-
+    if weights is not None:
+      train_weight_node = tf.placeholder(tf.float32, shape=train_labels_shape)
+    else:
+        train_weight_node = None
     print("Done Initializing Training Placeholders")
 
     # Build a Graph that computes the logits predictions from the placeholder
@@ -479,7 +484,7 @@ def train(images, labels, ckpt_path, dropout=False):
       logits = inference(train_data_node, dropout=dropout)
 
     # Calculate loss
-    loss = loss_fun(logits, train_labels_node)
+    loss = loss_fun(logits, train_labels_node, weights= train_weight_node)
 
     # Build a Graph that trains the model with one batch of examples and
     # updates the model parameters.
@@ -514,12 +519,18 @@ def train(images, labels, ckpt_path, dropout=False):
       start, end = utils.batch_indices(batch_nb, data_length, FLAGS.batch_size)
 
       # Prepare dictionnary to feed the session with
-      feed_dict = {train_data_node: images[start:end],
-                   train_labels_node: labels[start:end]}
-
+      if weights is not None:
+        feed_dict = {train_data_node: images[start:end],
+                   train_labels_node: labels[start:end],
+                   train_weight_node: weights[start:end]
+                   }
+      else:
+          feed_dict = {train_data_node: images[start:end],
+                       train_labels_node: labels[start:end]
+                       }
       # Run training step
       _, loss_value = sess.run([train_op, loss], feed_dict=feed_dict)
-
+      print('step={} loss={}'.format(step, loss_value))
       # Compute duration of training step
       duration = time.time() - start_time
 
