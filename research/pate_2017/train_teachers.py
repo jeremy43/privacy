@@ -24,15 +24,15 @@ import input
 import metrics
 
 
-tf.flags.DEFINE_string('dataset', 'svhn', 'The name of the dataset to use')
+tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
 tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
-tf.flags.DEFINE_string('data_dir','/tmp','Temporary storage')
-tf.flags.DEFINE_string('train_dir','/tmp/train_dir',
+tf.flags.DEFINE_string('data_dir','/home/yq/privacy/research/pate_2017','Temporary storage')
+tf.flags.DEFINE_string('train_dir','/home/yq/privacy/research/pate_2017/models',
                        'Where model ckpt are saved')
 
 tf.flags.DEFINE_integer('max_steps', 3000, 'Number of training steps to run.')
-tf.flags.DEFINE_integer('nb_teachers', 50, 'Teachers in the ensemble.')
+tf.flags.DEFINE_integer('nb_teachers', 2, 'Teachers in the ensemble.')
 tf.flags.DEFINE_integer('teacher_id', 0, 'ID of teacher being trained.')
 
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
@@ -97,7 +97,8 @@ def train_teacher(dataset, nb_teachers, teacher_id):
 
 def main(argv=None):  # pylint: disable=unused-argument
   # Make a call to train_teachers with values specified in flags
-  assert train_teacher(FLAGS.dataset, FLAGS.nb_teachers, FLAGS.teacher_id)
+  for id in range(FLAGS.nb_teachers):
+    assert train_teacher(FLAGS.dataset, FLAGS.nb_teachers, id)
 
 if __name__ == '__main__':
   tf.app.run()

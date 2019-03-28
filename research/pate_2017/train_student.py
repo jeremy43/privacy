@@ -39,12 +39,12 @@ tf.flags.DEFINE_string('teachers_dir','/home/yq/privacy/research/pate_2017/model
 
 tf.flags.DEFINE_integer('teachers_max_steps', 3000,
                         'Number of steps teachers were ran.')
-tf.flags.DEFINE_integer('max_steps', 3000, 'Number of steps to run student.')
+tf.flags.DEFINE_integer('max_steps', 5000, 'Number of steps to run student.')
 tf.flags.DEFINE_integer('nb_teachers', 50, 'Teachers in the ensemble.')
 tf.flags.DEFINE_integer('stdnt_share', 1000,
                         'Student share (last index) of the test data')
 tf.flags.DEFINE_integer('lap_scale', 10,
-                        'Scale of the Laplacian noise added for privacy')
+                        'Scale of the Laplacian noise added for privacy')#should be 10
 tf.flags.DEFINE_boolean('save_labels', False,
                         'Dump numpy arrays of labels and clean teacher votes')
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
@@ -119,7 +119,7 @@ def predict_data(dataset, nb_teachers, teacher = False):
   pred_labels = aggregation.noisy_max(teachers_preds, 0)
   # Print accuracy of aggregated labels
   ac_ag_labels = metrics.accuracy(pred_labels, test_labels)
-  print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
+  print("obtain_weight Accuracy of the aggregated labels: " + str(ac_ag_labels))
   return test_data, pred_labels, test_labels
 
 def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
@@ -158,7 +158,9 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
       #no noise
     # replace original student data with shift data
 
-    stdnt_data = shift_data
+    stdnt_data = shift_data['data']
+    test_labels = shift_data['label']
+    print('*** length of shift_data {} lable length={}********'.format(len(stdnt_data),len(test_labels)))
 
   # Compute teacher predictions for student training data
   teachers_preds = ensemble_preds(dataset, nb_teachers, stdnt_data)
@@ -185,7 +187,7 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
       np.save(file_obj, labels_for_dump)
 
   # Print accuracy of aggregated labels
-  if shift_data is None:
+  if shift_data is not None:
     ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels)
     print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
@@ -210,7 +212,7 @@ def shift_student(stdnt_data, student_pred, stdnt_labels):
   shift_position = 5
   index_out = np.where(stdnt_labels == shift_position)
   # keep ratio
-  ratio = 0.5
+  ratio = 0.01
   index_remain = index_out[0][0:int(ratio * len(index_out[0]))]
   index_keep = np.where(stdnt_labels!= 5)
   index_keep = index_keep[0]
@@ -280,12 +282,9 @@ def train_student(dataset, nb_teachers,inverse_w = None, shift_dataset = None):
   assert input.create_dir_if_needed(FLAGS.train_dir)
   print('len of shift data'.format(len(shift_dataset['data'])))
   # Call helper function to prepare student data using teacher predictions
-  stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_data = shift_dataset['data'])
+  stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_data = shift_dataset)
 
   # Unpack the student dataset, here stdnt_labels are already the ensemble noisy version
-  if shift_dataset is not None:
-    stdnt_data = shift_dataset['data']
-    stdnt_labels = shift_dataset['label']
   # Prepare checkpoint filename and path
   if FLAGS.deeper:
     ckpt_path = FLAGS.train_dir + '/' + str(dataset) + '_' + str(nb_teachers) + '_student_deeper.ckpt' #NOLINT(long-line)
@@ -297,7 +296,7 @@ def train_student(dataset, nb_teachers,inverse_w = None, shift_dataset = None):
   print('len of weight={} len of labels= {} '.format(len(weights), len(stdnt_labels)))
   for i, x in enumerate(weights):
     weights[i] = np.float32(inverse_w[stdnt_labels[i]])
-  #assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
+ # assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
   deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path)
   # Compute final checkpoint name for student (with max number of steps)
   ckpt_path_final = ckpt_path + '-' + str(FLAGS.max_steps - 1)
