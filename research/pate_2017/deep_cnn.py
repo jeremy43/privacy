@@ -31,7 +31,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_integer('dropout_seed', 123, """seed for dropout.""")
 tf.app.flags.DEFINE_integer('batch_size', 128, """Nb of images in a batch.""")
 tf.app.flags.DEFINE_integer('epochs_per_decay', 350, """Nb epochs per decay""")
-tf.app.flags.DEFINE_integer('learning_rate', 5, """100 * learning rate""")
+tf.app.flags.DEFINE_integer('learning_rate', 2, """100 * learning rate""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """see TF doc""")
 
 
