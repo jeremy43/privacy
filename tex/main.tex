@@ -187,11 +187,25 @@ For covariate shift, we make the simplifying assumption that $P_{\cP}(x,y)$ and 
 \mathbbm{E}_{\mathcal{P}}[\ell_f(x,y)]&=\int_{(x,y)}P(x,y)\ell_f(x,y){\rm d}x{\rm d}y\\
 &\approx \frac{1}{m}\sum_{i=1}^m \frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}\ell(\hat{x}_i,f(\hat{x}_i))
 \end{align*}
-We apply logistic regression to estimate importance weight $\frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}$
+We apply logistic regression to estimate importance weight $\frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}$. Suppose there are $K$ classes in both private and public dataset, for each class $k$, we want to use a logistic regression approach to estimate $\frac{p_k(z=1|x)}{z=-1|x}$. Here $z_i$ is a 1 if data drawn from private dataset and $-1$ for data drawn from $Q$ public dataset. Then the probability in a mixed dataset is given by
+$$
+p(z=1|x) =\frac{p_{\cP(x)}}{p_\cP(x)+p_\cQ(x)}
+$$
+We define $p(z=1|x) = \frac{1}{1+\exp{-f(x)}}$, where $f(x) = x^T \cdot theta$, $\theta$ is parameter in logistic regression.  So $\frac{p(z=1|x)}{z=-1|x} = e^{f(x)}$.Now we need to solve the differentially private logistic regression problem to obtain $f$.
+\begin{enumerate}
+	\item Train multi-classifiers on private dataset, and privately label public dataset with privacy budget$(\epsilon_1, \delta_1)$.
+	\item Train binary logistic regression to obtain importance weight parameter $f(x)$.
+	with privacy budget$(\epsilon_2, \delta_2),\minimize_f \frac{1}{2n} \sum_{(x,z)} \log{1 + \exp(-zf(x))} +\frac{1}{2\lambda}||f||^2 $\red{do we need to train k classifers?}. 
+	\item use $e^{f(x_i)}$ as covariate shift correction weights in training public dataset.
+\end{enumerate}
 \section{Theoretical Results}
 
 \section{Experiments}
 \subsection{Experimental Settings}
+\begin{enumerate}
+	\item For covariate shift, we generate bias sampling schemes over the features following \cite{gre_cov}. Specifically,  we first did PCA on public dataset, and select the first principal component of the training data and the corresponding projection values. Denoting the minimum value of the projection as $m$ and the mean as $\bar{m}$, we applied a normal distribution with mean $m + (\bar{m}-m)/a$ and variance $(\bar{m}-m)/b$ as the biased sampling scheme.
+	\item For label shift simulation, we adopt two sampling schemes. In $\textbf{knock-out shift}$, we knock out a fraction $\delta$ of data points from a given class from test and validation sets.(We assume the training set is the private dataset). In \textbf{Dirichlet shift}, we draw $p_\cQ(y)$ from a DIrichlet distribution with concentration parameter $\alpha$. With uniform $p_{\cQ}(y)$, Dirichlet shift is bigger for smaller $\alpha$.
+\end{enumerate}
 
 \subsection{Experimental Results}
 
