@@ -1,0 +1,203 @@
+\documentclass{article}
+
+\usepackage[final]{neurips_2019}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+
+\usepackage{graphicx}
+\usepackage{caption}
+%\usepackage{flexisym}
+\usepackage{array}
+\usepackage{subfig}
+\usepackage{bbm}
+%\usepackage{CJK}
+\usepackage{color}
+%\usepackage{enumitem}
+\usepackage{enumerate}
+\usepackage{mathtools}
+\usepackage{amsmath,amssymb,amsthm,bm}
+\usepackage{mathrsfs}
+\usepackage{algorithmic,algorithm}
+
+\newtheorem{lemma}{Lemma}
+\newtheorem{thm}{Theorem}
+\newtheorem{defn}{Definition}
+\theoremstyle{definition}
+\newtheorem*{remark}{Remark}
+\newtheorem{remark-star}{Remark}
+\newtheorem{remark-star-1}{Remark}
+\newtheorem*{observe}{Observation}
+\newtheorem{conj}{Conjecture}
+\newtheorem{corollary}{Corollary}
+\newtheorem{prop}{Proposition}
+\newtheorem*{proof-sketch}{Proof Sketch}
+
+\newcommand{\argmin}{\mathop{\mathrm{argmin}}}
+\newcommand{\argmax}{\mathop{\mathrm{argmax}}}
+\newcommand{\minimize}{\mathop{\mathrm{minimize}}}
+\newcommand{\maximize}{\mathop{\mathrm{maximize}}}
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+\newcommand{\blue}[1]{\textcolor{blue}{#1}}
+\newcommand{\mb}[1]{\boldsymbol{#1}}
+
+\def\E{\mathbb{E}}
+\def\P{\mathbb{P}}
+\def\Cov{\mathrm{Cov}}
+\def\Var{\mathrm{Var}}
+\def\half{\frac{1}{2}}
+\def\th{\mathrm{th}}
+\def\tr{\mathrm{tr}}
+\def\df{\mathrm{df}}
+\def\dim{\mathrm{dim}}
+\def\col{\mathrm{col}}
+\def\row{\mathrm{row}}
+\def\nul{\mathrm{null}}
+\def\rank{\mathrm{rank}}
+\def\nuli{\mathrm{nullity}}
+\def\sign{\mathrm{sign}}
+\def\supp{\mathrm{supp}}
+\def\diag{\mathrm{diag}}
+\def\Gauss{\mathrm{Gauss}}
+\def\subsample{\mathsf{PoissonSample}}
+\def\sparse{\mathsf{SparseVector}}
+\def\Lap{\mathsf{Lap}}
+\def\rr{\mathsf{Random Response}}
+\def\lap{\mathsf{Laplace Mechanism}}
+\def\expon{\mathsf{Exponential Mechanism}}
+\def\aff{\mathrm{aff}}
+\def\hy{\hat{y}}
+\def\ty{\tilde{y}}
+\def\hbeta{\hat{\beta}}
+\def\tbeta{\tilde{\beta}}
+\def\htheta{\hat{\theta}}
+\def\halpha{\hat{\alpha}}
+\def\hf{\hat{f}}
+\def\lone{1}
+\def\ltwo{2}
+\def\linf{\infty}
+\def\lzero{0}
+\def\T{^T}
+\def\R{\mathbb{R}}
+\def\cA{\mathcal{A}}
+\def\cB{\mathcal{B}}
+\def\cD{\mathcal{D}}
+\def\cE{\mathcal{E}}
+\def\cF{\mathcal{F}}
+\def\cG{\mathcal{G}}
+\def\cH{\mathcal{H}}
+\def\cI{\mathcal{I}}
+\def\cJ{\mathcal{J}}
+\def\cO{\mathcal{O}}
+\def\cL{\mathcal{L}}
+\def\cM{\mathcal{M}}
+\def\cN{\mathcal{N}}
+\def\cP{\mathcal{P}}
+\def\cQ{\mathcal{Q}}
+\def\cR{\mathcal{R}}
+\def\cS{\mathcal{S}}
+\def\cT{\mathcal{T}}
+\def\cW{\mathcal{W}}
+\def\cX{\mathcal{X}}
+\def\cY{\mathcal{Y}}
+\def\cZ{\mathcal{Z}}
+\def\TV{\mathrm{TV}}
+
+\title{Private Domain Adaptation under Label Shift}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{
+	Anonymous
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    We
+\end{abstract}
+
+\section{Introduction}
+Suppose now we have two different distributions $\mathcal{P}$ and $\mathcal{Q}$, and we have the items and their labels $(x_i,y_i)$ drawn i.i.d. from $\mathcal{P}$ where $i\in [n]$ is the index of the item and $n$ is the number of items. Also, we have $(\hat{x_j},\hat{y_j})$ drawn i.i.d. from $\mathcal{Q}$ where $j\in [m]$ is the index of the items and $m$ is the number of items.
+
+\textbf{Domain Adaptation}
+Let $\mathcal{F}$ denote the function class, the goal of domain adaptation is to find a function $f\in \mathcal{F}$ such that
+\begin{align*}
+    \inf_{f\in \mathcal{F}} \mathbbm{E}_{\mathcal{Q}}[ \ell_f (x,y)]
+\end{align*}
+
+\textbf{PATE}
+In PATE, the data $(x_i, y_i)$ from distribution $\mathcal{P}$ is private, and the data $(\hat{x_j}, \hat{y_j})$ is public. The goal of PATE is to find a function $f$ using $(\hat{x_j}, \hat{y_j})$ and $(\epsilon,\delta)-DP$ using $(x_i, y_i)$ such that
+\[
+\inf_{f\in \mathcal{F}} \cE_{\mathcal{P}}[ \ell_f (x,y)]
+\]
+
+\section{Related Work}
+
+\section{Proposed Approach}
+\section{Under label shift}
+The label shift assumption is
+\[
+P_{\mathcal{P}}(x|y) = P_{\mathcal{Q}}(x|y)
+\]
+
+We train $k$ classifiers $f$ in the training dataset, and we want to preserve privacy for samples in training. And $f$ should approximate the probability of the labels given the items
+\[
+f(x)\approx P_\mathcal{P}(y|x)
+\]
+
+We use the classifiers trained on the distribution $\mathcal{P}$ and public data whose distribution is $\mathcal{Q}$, thus, the joint distribution is
+\[
+(x,\hat{f}(x))\sim P_\mathcal{Q}(x)P_\mathcal{P}(y|x)
+\]
+
+The expected loss on the distribution $\mathcal{P}$ is
+\begin{align*}
+\mathbbm{E}_{\mathcal{P}}[\ell_f(x,y)]&=\int_{(x,y)}P(x,y)\ell_f(x,y){\rm d}x{\rm d}y\\
+&\approx \frac{1}{m}\sum_{i=1}^m \frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}\ell(\hat{x}_i,f(\hat{x}_i))
+\end{align*}
+The expected loss that we can approximate is
+\begin{align*}
+\mathbbm{E}_{\hat{x}\sim \mathcal{Q},\hat{y}\sim P(y|\hat{x})}[\ell_f(\hat{x},\hat{y})]&=\int_{(\hat{x},f(\hat{x}))}P_\mathcal{Q}(\hat{x})P_\mathcal{P}(y|\hat{x})\ell(\hat{x},y){\rm d}x{\rm d}y\\
+&\approx \frac{1}{m}\sum_{i=1}^{m}\ell(\hat{x}_i,f(\hat{x}_i))
+\end{align*}
+Thus, the key problem becomes how to estimate
+\[
+\frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}
+\]
+which is $\hat{w}^{-1}=\hat{c}_{\hat{y},y}\hat{\mu}^{-1}_{\hat{y}}$ from the label shift. We can add privacy noise to $\hat{c}_{\hat{y},y}$. When query $x_i$, we compute $f(x)\cdot w$.
+
+\section{Covariate shift correction}
+For covariate shift, we make the simplifying assumption that $P_{\cP}(x,y)$ and $P_{\cQ}{x,y}$ only differ via $P_{\cP}(x,y) = P(y|x)P_{\cP}(x)$ and $P_{\cQ}(x,y) = P(y|x)P_{\cQ}(x)$. In other words, the conditional probabilities of $y|x$ remain unchanged. For importance sampling, we begin by minimizing the expected risk of Private dataset $\cP$.
+\begin{align*}
+\mathbbm{E}_{\mathcal{P}}[\ell_f(x,y)]&=\int_{(x,y)}P(x,y)\ell_f(x,y){\rm d}x{\rm d}y\\
+&\approx \frac{1}{m}\sum_{i=1}^m \frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}\ell(\hat{x}_i,f(\hat{x}_i))
+\end{align*}
+We apply logistic regression to estimate importance weight $\frac{P_\mathcal{P}(\hat{x})}{P_\mathcal{Q}(\hat{x})}$
+\section{Theoretical Results}
+
+\section{Experiments}
+\subsection{Experimental Settings}
+
+\subsection{Experimental Results}
+
+\section{Conclusion}
+
+\bibliography{pate_shift.bib}
+\bibliographystyle{plain}
+
+\end{document}
