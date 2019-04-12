@@ -22,25 +22,25 @@ import tensorflow as tf
 import deep_cnn
 import input
 import metrics
-
-
+import pickle
 tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
 tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
 tf.flags.DEFINE_string('data_dir','/home/yq/privacy/research/pate_2017','Temporary storage')
 tf.flags.DEFINE_string('train_dir','/home/yq/privacy/research/pate_2017/models',
-                       'Where model ckpt are saved')
+                     'Where model ckpt are saved')
+tf.flags.DEFINE_string('data','home/yq/privacy/research/pate_2017/data', 'where pca data are saved ')
 
 tf.flags.DEFINE_integer('max_steps', 3000, 'Number of training steps to run.')
 tf.flags.DEFINE_integer('nb_teachers', 2, 'Teachers in the ensemble.')
 tf.flags.DEFINE_integer('teacher_id', 0, 'ID of teacher being trained.')
-
+tf.flags.DEFINE_boolean('cov_shift', True, 'cov_shift instead of label shift')
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
 
 FLAGS = tf.flags.FLAGS
 
 
-def train_teacher(dataset, nb_teachers, teacher_id):
+def train_teacher(FLAGS, dataset, nb_teachers, teacher_id):
   """
   This function trains a teacher (teacher id) among an ensemble of nb_teachers
   models for the dataset specified.
@@ -63,7 +63,13 @@ def train_teacher(dataset, nb_teachers, teacher_id):
   else:
     print("Check value of dataset flag")
     return False
-
+  if FLAGS.cov_shift == True:
+    teacher_file_name = FLAGS.data + 'PCA_teacher' + FLAGS.dataset + '.pkl'
+    student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
+    f = open(teacher_file_name, 'rb')
+    train_data = pickle.load(f)
+    f = open(student_file_name, 'rb')
+    test_data = pickle.load(f)
   # Retrieve subset of data for this teacher
   data, labels = input.partition_dataset(train_data,
                                          train_labels,
@@ -74,9 +80,9 @@ def train_teacher(dataset, nb_teachers, teacher_id):
 
   # Define teacher checkpoint filename and full path
   if FLAGS.deeper:
-    filename = str(nb_teachers) + '_teachers_' + str(teacher_id) + '_deep.ckpt'
+    filename = str(nb_teachers) + 'pca_teachers_' + str(teacher_id) + '_deep.ckpt'
   else:
-    filename = str(nb_teachers) + '_teachers_' + str(teacher_id) + '.ckpt'
+    filename = str(nb_teachers) + 'pca_teachers_' + str(teacher_id) + '.ckpt'
   ckpt_path = FLAGS.train_dir + '/' + str(dataset) + '_' + filename
 
   # Perform teacher training
@@ -98,7 +104,7 @@ def train_teacher(dataset, nb_teachers, teacher_id):
 def main(argv=None):  # pylint: disable=unused-argument
   # Make a call to train_teachers with values specified in flags
   for id in range(FLAGS.nb_teachers):
-    assert train_teacher(FLAGS.dataset, FLAGS.nb_teachers, id)
+    assert train_teacher(FLAGS, FLAGS.dataset, FLAGS.nb_teachers, id)
 
 if __name__ == '__main__':
   tf.app.run()

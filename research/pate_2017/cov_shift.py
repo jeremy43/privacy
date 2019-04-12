@@ -4,9 +4,14 @@ from six.moves import xrange
 import tensorflow as tf
 from sklearn.linear_model import LogisticRegression
 import aggregation
+import os
 import deep_cnn
 import input
+from sklearn.decomposition import PCA, KernelPCA
 import metrics
+import pickle
+from scipy import linalg as LA
+from sklearn.preprocessing import normalize
 import cov_shift
 def predict_data(dataset, nb_teachers, teacher = False):
   """
@@ -126,6 +131,56 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
   return stdnt_data, stdnt_labels
 
 
+def pca_transform(dataset, FLAGS):
+    """
+    Do PCA transform on both teacher and student dataset
+    :param dataset:
+    :return:
+    pca transformed teacher and student dataset
+    """
+    teacher_file_name = FLAGS.data + 'PCA_teacher' + dataset + '.pkl'
+    student_file_name = FLAGS.data + 'PCA_student' + dataset + '.pkl'
+    if os.path.exists(teacher_file_name):
+        return
+    test_only = False
+    train_only = False
+    dim = 784
+    # Load the dataset
+    if dataset == 'svhn':
+        train_data, train_labels, test_data, test_labels = input.ld_svhn(test_only, train_only)
+
+    elif dataset == 'cifar10':
+        train_data, train_labels, test_data, test_labels= input.ld_cifar10(test_only, train_only)
+    elif dataset == 'mnist':
+        train_data, train_labels, test_data, test_labels = input.ld_mnist(test_only, train_only)
+    else:
+        print("Check value of dataset flag")
+        return False
+    ori_train = train_data.shape
+    ori_test = test_data.shape
+    test_data = test_data.reshape((-1, dim))
+    train_data = train_data.reshape((-1,dim))
+    pca = PCA(n_components=dim)
+    pca.fit(test_data)
+    test_data = pca.transform(test_data)
+    train_data = pca.transform(train_data)
+    """
+    normalize_matrix = normalize(test_data, axis=1, norm='l2')
+    cov_matrix = np.matmul(np.transpose(normalize_matrix), normalize_matrix)
+    evals, evecs = LA.eigh(cov_matrix)
+    idx = np.argsort(evals)[::-1]
+    #evecs = evecs[:, idx[:60]]
+    test_data = np.matmul(test_data, evecs)
+    train_data = normalize(train_data.reshape((-1, 784)), axis=1, norm='l2')
+    train_data = np.matmul(train_data, evecs)
+    """
+    train_data = np.reshape(train_data, ori_train)
+    test_data = np.reshape(test_data, ori_test)
+    f = open(teacher_file_name,'wb')
+    pickle.dump(train_data, f)
+    f = open(student_file_name, 'wb')
+    pickle.dump(test_data, f)
+
 
 def prepare_cov_shift(dataset, a,b):
     """
@@ -159,7 +214,7 @@ def prepare_cov_shift(dataset, a,b):
     projection = kpca.fit_transform(stdnt_data)
     #pca = PCA(n_components=dim)
     #pca.fit(stdnt_data)
-    #project    ion = pca.transform(stdnt_data)
+    #projection = pca.transform(stdnt_data)
     # pick the maximum column
     max_col = projection[:,0]
     min_v = min(max_col)
@@ -175,7 +230,7 @@ def prepare_cov_shift(dataset, a,b):
     shift_dataset['label'] = test_labels
     return shift_dataset
 
-def logistic(FLAGS, student =None):
+def logistic(FLAGS):
     """
     use logistic regression to learn cov shift between teacher and student
      the label for teacher is 1, for student is -1
@@ -184,10 +239,14 @@ def logistic(FLAGS, student =None):
     :param student:
     :return:
     """
+
+    teacher_file_name = FLAGS.data + 'PCA_teacher' + FLAGS.dataset + '.pkl'
+    student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
+    f = open(teacher_file_name, 'rb')
+    teacher = pickle.load(f)
+    f = open(student_file_name, 'rb')
+    student = pickle.load(f)
     assert input.create_dir_if_needed(FLAGS.train_dir)
-    teacher, test_labels = input.ld_mnist(train_only = True)
-    if student is not None:
-        student, student_labels = input.ld_mnist(test_only = True)
 
     student = student.reshape(-1, 784)
     teacher = teacher.reshape(-1, 784)
@@ -209,6 +268,7 @@ def logistic(FLAGS, student =None):
     bias = np.expand_dims(bias, axis=1)
     # coeff refer to theta star in paper, should be cls * d+1
     coeff = np.concatenate((coeff, bias), axis=1)
+    coeff = np.squeeze(coeff)
     # importance weight = p(x)/q(x) = np.exp(f(x))
     weight = np.exp(np.dot(student,coeff.T))
     return weight

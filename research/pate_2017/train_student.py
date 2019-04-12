@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange
 import tensorflow as tf
-
+import pickle
 import aggregation
 import deep_cnn
 import input
@@ -36,10 +36,11 @@ tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research','
 tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/models','Where model chkpt are saved')
 tf.flags.DEFINE_string('teachers_dir','/Users/yuqing/github_proj/privacy/research/models',
                        'Directory where teachers checkpoints are stored.')
+tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data', 'where pca data are saved ')
 tf.flags.DEFINE_integer('teachers_max_steps', 3000,
                         'Number of steps teachers were ran.')
 tf.flags.DEFINE_integer('max_steps', 2500, 'Number of steps to run student.')
-tf.flags.DEFINE_integer('nb_teachers', 50, 'Teachers in the ensemble.')
+tf.flags.DEFINE_integer('nb_teachers', 2, 'Teachers in the ensemble.')
 tf.flags.DEFINE_integer('stdnt_share', 1000,
                         'Student share (last index) of the test data')
 tf.flags.DEFINE_integer('lap_scale', 10,
@@ -73,9 +74,9 @@ def ensemble_preds(dataset, nb_teachers, stdnt_data):
   for teacher_id in xrange(nb_teachers):
     # Compute path of checkpoint file for teacher model with ID teacher_id
     if FLAGS.deeper:
-      ckpt_path = FLAGS.teachers_dir + '/' + str(dataset) + '_' + str(nb_teachers) + '_teachers_' + str(teacher_id) + '_deep.ckpt-' + str(FLAGS.teachers_max_steps - 1) #NOLINT(long-line)
+      ckpt_path = FLAGS.teachers_dir + '/' + str(dataset) + '_' + str(nb_teachers) + 'pca_teachers_' + str(teacher_id) + '_deep.ckpt-' + str(FLAGS.teachers_max_steps - 1) #NOLINT(long-line)
     else:
-      ckpt_path = FLAGS.teachers_dir + '/' + str(dataset) + '_' + str(nb_teachers) + '_teachers_' + str(teacher_id) + '.ckpt-' + str(FLAGS.teachers_max_steps - 1)  # NOLINT(long-line)
+      ckpt_path = FLAGS.teachers_dir + '/' + str(dataset) + '_' + str(nb_teachers) + 'pca_teachers_' + str(teacher_id) + '.ckpt-' + str(FLAGS.teachers_max_steps - 1)  # NOLINT(long-line)
 
     # Get predictions on our training data and store in result array
     result[teacher_id] = deep_cnn.softmax_preds(stdnt_data, ckpt_path)
@@ -149,6 +150,10 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
 
   # Make sure there is data leftover to be used as a test set
   assert FLAGS.stdnt_share < len(test_data)
+  if FLAGS.cov_shift == True:
+    student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
+    f = open(student_file_name, 'rb')
+    test_data = pickle.load(f)
 
   # Prepare [unlabeled] student training data (subset of test set)
   stdnt_data = test_data
@@ -363,13 +368,13 @@ def train_student(dataset, nb_teachers, weight = True, inverse_w = None, shift_d
 
 def main(argv=None): # pylint: disable=unused-argument
   # Run student training according to values specified in flags
-  Cov_shift = True
-  if Cov_shift:
 
-    student_data = cov_shift.prepare_cov_shift(FLAGS.dataset, 1, 1)
-    theta = cov_shift.logistic(FLAGS, student = student_data) # theta is the parameter in logistic, used for importance weight
+  if FLAGS.cov_shift == True:
+    cov_shift.pca_transform(FLAGS.dataset, FLAGS)
+    #student_data = cov_shift.prepare_cov_shift(FLAGS.dataset, 1, 1)
+    theta = cov_shift.logistic(FLAGS) # theta is the parameter in logistic, used for importance weight
     for weight in [True, False]:
-      assert train_student(FLAGS.dataset, FLAGS.nb_teachers, weight, theta, student_data)
+      assert train_student(FLAGS.dataset, FLAGS.nb_teachers, weight, theta)
   else:
     for knock in [True]:
         # here 2 is the number of teacher to estimate weight
