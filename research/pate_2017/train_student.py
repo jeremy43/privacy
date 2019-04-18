@@ -36,7 +36,7 @@ tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research','
 tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/models','Where model chkpt are saved')
 tf.flags.DEFINE_string('teachers_dir','/Users/yuqing/github_proj/privacy/research/models',
                        'Directory where teachers checkpoints are stored.')
-tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data', 'where pca data are saved ')
+tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data/', 'where pca data are saved ')
 tf.flags.DEFINE_integer('teachers_max_steps', 3000,
                         'Number of steps teachers were ran.')
 tf.flags.DEFINE_integer('max_steps', 2500, 'Number of steps to run student.')
@@ -48,7 +48,7 @@ tf.flags.DEFINE_integer('lap_scale', 10,
 tf.flags.DEFINE_boolean('save_labels', False,
                         'Dump numpy arrays of labels and clean teacher votes')
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
-tf.flags.DEFINE_boolean('cov_shift', True, 'cov_shift instead of label shift')
+tf.flags.DEFINE_boolean('cov_shift', False, 'cov_shift instead of label shift')
 
 def ensemble_preds(dataset, nb_teachers, stdnt_data):
   """
@@ -148,6 +148,7 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
     print("Check value of dataset flag")
     return False
 
+
   # Make sure there is data leftover to be used as a test set
   assert FLAGS.stdnt_share < len(test_data)
   if FLAGS.cov_shift == True:
@@ -191,9 +192,9 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
       np.save(file_obj, labels_for_dump)
 
   # Print accuracy of aggregated labels
-  if shift_data is not None:
-    ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels)
-    print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
+
+  ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels)
+  print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
 
 
@@ -215,24 +216,23 @@ def dir_shift(stdnt_data, student_pred, stdnt_labels, alpha):
   :param stdnt_labels:
   :return: student data with shift parameter alpha
   """
-  label = np.max(stdnt_labels) + 1
-  alpha_array = [alpha for i in range(label)]
+  label = np.unique(stdnt_labels)
+  alpha_array = [alpha for i in label]
   dist = np.random.dirichlet(alpha_array, 1)
   dist = dist[0]
-  max_dist = np.max(dist)
-  # dist the probability of p(y) for student dataset
-  dist = dist / max_dist
+  num_data = stdnt_data.shape[0]
+  choice = np.random.choice(label, num_data,p = dist)
+
   index  = [len(stdnt_labels)-1] # at least one element
-  for x in range(label):
+  for x in label:
     index_out = np.where(stdnt_labels == x)
-    index_remain = index_out[0][0:int(dist[x] * len(index_out[0]))]
-    if len(index_remain) == 0:
-      print('sb')
-      index_remain = index_out[0][:1]
+    cur_number = np.where(choice == x)[0].shape[0]
+    if cur_number == 0: # none element in this class have been chosen
+        index_remain = index_out[0][:1]
+    else:
+        index_remain = np.random.choice(index_out[0],cur_number,replace = True)
     index = np.concatenate((index, index_remain))
-  print(stdnt_labels[index][:100])
   np.random.shuffle(index)
-  print(stdnt_labels[index][:100])
   shift_data = student_pred[index]
   shift_label = stdnt_labels[index]
   shift_dataset = {}
@@ -282,7 +282,7 @@ def obtain_weight(knock, student_data, nb_teacher):
   """
   assert input.create_dir_if_needed(FLAGS.train_dir)
   # Call helper function to prepare student data using teacher predictions
-  _, teacher_pred, teacher_test = predict_data(student_data, nb_teacher, teacher = True)
+
   # Unpack the student dataset
   stdnt_data, stdnt_pred, stdnt_test = predict_data(student_data, nb_teacher, teacher=False)
   if knock == False:
@@ -290,6 +290,7 @@ def obtain_weight(knock, student_data, nb_teacher):
   else:
     shift_dataset= shift_student(stdnt_data, stdnt_pred, stdnt_test)
   #students' prediction after shift
+  _, teacher_pred, teacher_test = predict_data(student_data, nb_teacher, teacher=True)
   stdnt_pred = shift_dataset['pred']
   stdnt_labels = shift_dataset['label']
   num_class = np.max(stdnt_test) +1
@@ -364,32 +365,49 @@ def train_student(dataset, nb_teachers, weight = True, inverse_w = None, shift_d
   elif shift_dataset['version'] == 'alpha':
     print('weight is {} shift_ratio={} Precision of teacher after training:{} student={}'.format(weight, shift_dataset['alpha'], precision_t, precision_s))
 
-  return True
+  return precision_t, precision_s
 
 def main(argv=None): # pylint: disable=unused-argument
   # Run student training according to values specified in flags
 
   if FLAGS.cov_shift == True:
-    cov_shift.pca_transform(FLAGS.dataset, FLAGS)
+    #cov_shift.pca_transform(FLAGS.dataset, FLAGS)
     #student_data = cov_shift.prepare_cov_shift(FLAGS.dataset, 1, 1)
     theta = cov_shift.logistic(FLAGS) # theta is the parameter in logistic, used for importance weight
     for weight in [True, False]:
       assert train_student(FLAGS.dataset, FLAGS.nb_teachers, weight, theta)
   else:
-    for knock in [True]:
-        # here 2 is the number of teacher to estimate weight
-        # knock is False refer to derichlet shift
-      shift_dataset, inverse_w = obtain_weight(knock, FLAGS.dataset, 2)
-      print('******* inverse_weight={}'.format(inverse_w))
+    for knock in [False]:
+    # here 2 is the number of teacher to estimate weight
+    # knock is False refer to derichlet shift
+    # We average the accuracy results for 10 time
+      precision_t = []
+      precision_s = []
       for idx in range(10):
-        if inverse_w[idx]>30:
-          inverse_w[idx] = inverse_w[idx]
+        shift_dataset, inverse_w = obtain_weight(knock, FLAGS.dataset, 2)
+        print('******* inverse_weight={}'.format(inverse_w))
+        sum = np.sum(inverse_w)
+        inverse_w = [ x/sum*10 for x in inverse_w]
+        print('inverse weight = {}'.format(inverse_w))
+        for weight in [True, False]:
+          ac_t, ac_s = train_student(FLAGS.dataset, FLAGS.nb_teachers,weight, inverse_w, shift_dataset)
+          precision_t.append(ac_t)
+          precision_s.append(ac_s)
 
-      sum = np.sum(inverse_w)
-      inverse_w = [ x/sum*10 for x in inverse_w]
-      print('inverse weight = {}'.format(inverse_w))
-      for weight in [True, False]:
-        assert train_student(FLAGS.dataset, FLAGS.nb_teachers,weight, inverse_w, shift_dataset)
-
+  ckpt_path = FLAGS.train_dir + '/' + str(FLAGS.dataset) + 'result.txt'
+  with open(ckpt_path, 'w') as f:
+    if knock == True:
+      f.write('knock out methods:\n')
+    else:
+      f.write('dirshlet methods:\n')
+    f.write('teacher prediction\n')
+    for item in precision_t:
+      f.write(item)
+    f.write('\n')
+    f.write('student prediction\n')
+    for item in precision_s:
+      f.write(item)
+    f.write('\n')
 if __name__ == '__main__':
+
   tf.app.run()

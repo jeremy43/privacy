@@ -26,10 +26,10 @@ import pickle
 tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
 tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
-tf.flags.DEFINE_string('data_dir','/home/yq/privacy/research/pate_2017','Temporary storage')
-tf.flags.DEFINE_string('train_dir','/home/yq/privacy/research/pate_2017/models',
+tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research/','Temporary storage')
+tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/model',
                      'Where model ckpt are saved')
-tf.flags.DEFINE_string('data','home/yq/privacy/research/pate_2017/data', 'where pca data are saved ')
+tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data', 'where pca data are saved ')
 
 tf.flags.DEFINE_integer('max_steps', 3000, 'Number of training steps to run.')
 tf.flags.DEFINE_integer('nb_teachers', 2, 'Teachers in the ensemble.')
