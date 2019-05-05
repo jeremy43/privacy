@@ -27,6 +27,12 @@
 \usepackage{mathrsfs}
 \usepackage{algorithmic,algorithm}
 
+\makeatletter
+\newcommand{\printfnsymbol}[1]{%
+	\textsuperscript{\@fnsymbol{#1}}%
+}
+\makeatother
+
 \newcommand{\argmin}{\mathop{\mathrm{argmin}}}
 \newcommand{\argmax}{\mathop{\mathrm{argmax}}}
 \newcommand{\minimize}{\mathop{\mathrm{minimize}}}
@@ -34,11 +40,11 @@
 \newcommand{\red}[1]{\textcolor{red}{#1}}
 \newcommand{\blue}[1]{\textcolor{blue}{#1}}
 \newcommand{\mb}[1]{\boldsymbol{#1}}
-\renewcommand{\thepage}{\thelecnum-\arabic{page}}
-\renewcommand{\thesection}{\thelecnum.\arabic{section}}
-\renewcommand{\theequation}{\thelecnum.\arabic{equation}}
-\renewcommand{\thefigure}{\thelecnum.\arabic{figure}}
-\renewcommand{\thetable}{\thelecnum.\arabic{table}}
+%\renewcommand{\thepage}{\thelecnum-\arabic{page}}
+%\renewcommand{\thesection}{\thelecnum.\arabic{section}}
+%\renewcommand{\theequation}{\thelecnum.\arabic{equation}}
+%\renewcommand{\thefigure}{\thelecnum.\arabic{figure}}
+%\renewcommand{\thetable}{\thelecnum.\arabic{table}}
 
 \def\E{\mathbb{E}}
 \def\P{\mathbb{P}}
@@ -101,16 +107,30 @@
 \def\cY{\mathcal{Y}}
 \def\cZ{\mathcal{Z}}
 \def\TV{\mathrm{TV}}
-\newcounter{lecnum}
-\newtheorem{theorem}{Theorem}[lecnum]
-\newtheorem{lemma}[theorem]{Lemma}
-\newtheorem{proposition}[theorem]{Proposition}
-\newtheorem{claim}[theorem]{Claim}
-\newtheorem{corollary}[theorem]{Corollary}
-\newtheorem{definition}[theorem]{Definition}
-\newtheorem{example}[theorem]{Example}
 
-\title{Private Domain Adaptation under Label Shift}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+\theoremstyle{definition}
+\newtheorem*{remark}{Remark}
+\newtheorem{remark-star}{Remark}
+\newtheorem{remark-star-1}{Remark}
+\newtheorem*{observe}{Observation}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{corollary}{Corollary}
+\newtheorem{propsition}{Proposition}
+\newtheorem*{proof-sketch}{Proof Sketch}
+
+%\newtheorem{theorem}{Theorem}[lecnum]
+%\newtheorem{lemma}[theorem]{Lemma}
+%\newtheorem{proposition}[theorem]{Proposition}
+%\newtheorem{claim}[theorem]{Claim}
+%\newtheorem{corollary}[theorem]{Corollary}
+%\newtheorem{definition}[theorem]{Definition}
+%\newtheorem{example}[theorem]{Example}
+
+\title{Private Domain Adaptation under Covariate and Label Shift}
 
 % The \author macro works with any number of authors. There are two commands
 % used to separate the names and addresses of multiple authors: \And and \AND.
@@ -121,7 +141,24 @@
 % \AND instead of \And before the third author name.
 
 \author{
-	Anonymous
+	Yuqing Zhu \thanks{Equal contribution.}\\
+	Department of Computer Science \\
+	University of California, Santa Barbara \\
+	Santa Barbara, CA 93106 \\
+	\texttt{yuqingzhu@cs.ucsb.edu} \\
+	% examples of more authors
+	\And
+	Chong Liu \printfnsymbol{1} \\
+	Department of Computer Science \\
+	University of California, Santa Barbara \\
+	Santa Barbara, CA 93106 \\
+	\texttt{chongliu@cs.ucsb.edu} \\
+	\And
+	Yu-Xiang Wang \\
+	Department of Computer Science \\
+	University of California, Santa Barbara \\
+	Santa Barbara, CA 93106 \\
+	\texttt{yuxiangw@cs.ucsb.edu} \\
 }
 
 \begin{document}
@@ -198,12 +235,41 @@ We define $p(z=1|x) = \frac{1}{1+\exp{-f(x)}}$, where $f(x) = x^T \cdot theta$, 
 	\item Train binary logistic regression to obtain importance weight parameter $f(x)$.
 	with privacy budget$(\epsilon_2, \delta_2),\minimize_f \frac{1}{2n} \sum_{(x,z)} \log{1 + \exp(-zf(x))} +\frac{1}{2\lambda}||f||^2 $\red{do we need to train k classifers?}. 
 	\item Since the size of private dataset is usually overwhelming than public dataset, here we also implement an importance weighting version of logistic regression.
-	\begin{equation}
-	  \beta = \argmin_\beta -\frac{1}{N_p} \sum_{x\in \text{Private}} \log( p( x\in \text{Private} | x \in \text{Private and Public}))}  \\- \frac{1}{N_s}\sum_{x \in \text{Public}} \log(p(x \in \text{Public} |\text{Public and Private}))
-	\end{equation}
+	\begin{align*}
+	  \beta = \argmin_\beta -\frac{1}{N_p} \sum_{x\in \text{Private}} \log( p( x\in \text{Private} | x \in \text{Private and Public}))\\
+  - \frac{1}{N_s}\sum_{x \in \text{Public}} \log(p(x \in \text{Public} |\text{Public and Private}))
+	\end{align*}
 	\item use $e^{f(x_i)}$ as covariate shift correction weights in training public dataset.
 \end{enumerate}
 \section{Theoretical Results}
+In this section, we provide several theoretical results of our proposed algorithms, including privacy guarantees and utility guarantees.
+
+\subsection{Privacy Guarantees}
+
+\subsection{Utility Guarantees}
+We provide utility guarantees under both realizable and unrealizable cases. Let $R_P$ and $R_Q$ denote the risk of a hypothesis $h\in \cH$ on distribution $P$ and $Q$, respectively, namely,
+\begin{align*}
+R_P &= \min_{h\in \cH} \text{err}(h,P),\\
+R_Q &= \min_{h\in \cH} \text{err}(h,Q).
+\end{align*}
+Totally, we need to consider four different cases: (1) $R_P=0, R_Q=0$, (2) $R_P>0, R_Q>0$, (3) $R_P=0, R_Q>0$, and (4) $R_P>0, R_Q=0$. The first case is the realizable case, while other three are unrealizable ones. The following lemma shows that the last case never happens and it could be ignored.
+\begin{lemma}
+	Suppose if $P(x,y) > 0$, then $Q(x,y)>0$. If $\cH$ is realizable for $Q$, then $\forall x,y, \exists h\in \cH$, such that $Q(x,y)>0$ and $h(x)=y$. Therefore, $\cH$ is also realizable on $P$.
+\end{lemma}
+\begin{proof}
+	By the assumption, $\forall x,y$ such that $P(x,y)>0$, we can get $Q(x,y)>0$. Considering the error on $Q$, we could write
+	\begin{align*}
+	\text{err}(h^*_Q,Q)=\sum_{x,y} Q(x,y)\mathbbm{1}(h^*_Q(x)\neq y)=0,
+	\end{align*}
+	where $h^*_Q$ is the realizable hypothesis and $\mathbbm{1}(\cdot)$ is the indicator function. So for error on $P$, we could write
+	\begin{align*}
+	\text{err}(h^*_Q,P)=\sum_{x,y} P(x,y)\mathbbm{1}(h^*_Q(x)\neq y)=0,
+	\end{align*}
+	which means $\cH$ is also realizable on $P$.
+\end{proof}
+\begin{remark}
+	Throughout this paper, we are considering the importance weight $w=P(x,y)/Q(x,y)$. The assumption that if $P(x,y) > 0$, then $Q(x,y)>0$ is not artificial. It means $w<\infty$, i.e., $w$ is bounded.
+\end{remark}
 
 \section{Experiments}
 \subsection{Experimental Settings}
