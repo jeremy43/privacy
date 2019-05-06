@@ -245,13 +245,68 @@ We define $p(z=1|x) = \frac{1}{1+\exp{-f(x)}}$, where $f(x) = x^T \cdot theta$, 
 In this section, we provide several theoretical results of our proposed algorithms, including privacy guarantees and utility guarantees.
 
 \subsection{Privacy Guarantees}
+\begin{theorem}[Error bounds]
+	Assume $\hat{w} = w + E_0$, we have 
+	$$
+	||	\diag(\hat{w})^{-1} -  \diag(w)^{-1}|| \leq 0.5|| \diag(w)^{-1}||^2 ||E_0||
+	$$
+\end{theorem}
+\begin{proof}
+	Assume $\hat w  = \hat C_{\hat y, y}^{-1}\hat{\mu}_{\hat y} $, $w = C_{\hat y, y}^{-1} \mu_{y}$, we already have $||w - \hat w|| \leq E_0$. Here $w_i = \frac{q(y_i)}{p(y_i)}$. In Pate framework, we are interested in $ w^{-1} = \frac{p(y)}{q(y)}$, (the element-wise inverse of $w$).
+	\begin{align}
+	  || \hat w^{-1} -w^{-1}||^2 = || {\diag (\hat w)}^{-1} - {\diag( w)}^{-1}||^2
+	\end{align}
+By Woodbury matrix identity, we have 
+\begin{align}
+	\diag(\hat{w})^{-1} &= [\diag(C_{\hat y, y}^{-1}\mu_{y} + E_0)]^{-1} \\
+	&= \diag(w)^{-1} + \diag(w)^{-1}[\diag(w)^{-1} + \diag(E_0)^{-1}]^{-1}\diag(w)^{-1}
+\end{align}
+$||[\diag(w)^{-1} + \diag(E_0)^{-1}]^{-1}|| \leq||0.5E_0|| =0.5||E_0||$\\
+So we have $||	\diag(\hat{w})^{-1} -  \diag(w)^{-1}|| \leq 0.5|| \diag(w)^{-1}||^2 ||E_0||$
+\end{proof}
+In order to privately release importance weight $w^{-1}$, we add gaussian noise to $\hat{C}_{\hat y, y}$, and we use the following lemma to estimate the empirical risk and generalization error under label shift setting.
+\begin{lemma}[privacy guarantee for releasing $\hat C_{\hat y, y}$.]
+	Suppose $D,D'$ are adjacent dataset.The global sensitivity $\triangle$ for each entry in the $C_{y_i, y_j}$ is at most $\frac{1}{n}$. We set $\sigma = \frac{\sqrt{2 \log(1.25/\delta)}}{n \epsilon}$,add gaussian noise $E_{\cN} $ joint from $\cN(0, \sigma^2)$ to
+	$\hat C_{\hat y, y}$.  This method will ensure a $(\epsilon, \delta)$ guarantee for releasing $\hat C$.
+\end{lemma}\label{privacy_label}
+\begin{lemma}[{utility guarantee for $||{\diag(\tilde{w})}^{-1} - {\diag(w)}^{-1}||$} under label shift] 
 
-\subsection{Utility Guarantees}
+if we privately release $\hat{C}_{\hat y,y}$ with gaussian noise $\cN$, and assume $\hat{C}_{\hat y,y} = C_{\hat y, y} + E_1$, then $||{\diag(\tilde{w})}^{-1} - {\diag(w)}^{-1}|| \leq \frac{(||E_1||^2 + ||\cN||^2)}{\sigma_{\min}^2}||w||^2 + ||E_3||$.
+\end{lemma} 
+\begin{proof}
+	Note that $\hat C_{\hat y, y} = \frac{1}{n}\sum_{i=1}^nf(x_i)f(y_i)^T$, where $e_y$ is the standard basis with 1 at the index of $y \in \cY$ and 0 elsewhere. $E e_{f(x_i)}e_{y_i}^T = C_{\hat y,y}$. From \eqref{privacy_label}, we have differential private $\tilde {C}_{\hat y, y} = \hat C_{\hat y, y}  + \cN$, and we want to bound $||\tilde C_{\hat y,y} - C_{\hat y, y}||$.
+	\begin{align}
+	||\tilde C_{\hat y,y} - C_{\hat y, y}|| & \leq ||\tilde C_{\hat y,y} -\hat C_{\hat y, y}|| + ||\hat C_{\hat y,y} - C_{\hat y, y}|| \\
+	& = ||\cN|| + ||E_1||
+	\end{align}
+	Denote $Z_i = e_{f(x_i)}e_{y_i}^T - C_{\hat y , y}$, $||Z_i|| \leq 2$, by matrix Berstein inequality we have for all $t \geq 0$:
+	$$
+	\mathbb{P}(||E_1|| \geq t \diagup n) \leq 2ke^{\frac{-t^2}{n+2t/3}}
+	$$
+	Take $t = \sqrt{20nlogn}$, then with probability at least $1 - 2kn^{-10}$, $||E_1|| \leq \sqrt{\frac{20 \log n}{n}}$
+	For $||\cN||$, suppose there are $d$ classes, $||\cN|| \leq \sigma \sqrt{d} = \frac{\sqrt{2 \log(1.25 /\delta)}}{n \epsilon}$. Note $\tilde w = \tilde C_{\hat y, y} \mu_{\hat y}$, we get 
+	$$
+	||\tilde w  -w||^2 \leq \frac{(||E_1||^2 + ||\cN||^2)}{\sigma_{\min}^2}||w||^2 + ||E_3||
+		$$
+	$||E_3|| =||\mu_{\hat y} -\hat{\mu}_{\hat y}||_2 \leq{\frac{\sqrt{10k log m}}{\sqrt(m)}}$
+\end{proof}
+\begin{remark}[privacy guarantee for $\beta$ under covariate shift.] The following algorithm will provide $(\epsilon, \delta)$ privacy guarantee for $\beta$.
+	Assume dataset $\cD = P \bigcup Q =\{x_1 ,....,x_{n+m}\}$, convex loss function $\hat{\cL}(\beta; \cD) = \frac{1}{n}\sum_{i=1}^n \ell(\beta; x_i)$, $\ell$ here is binary logistic regression with continuous Hessian, $||\nabla \ell(\beta;x)|| \leq \xi$ and the smooth term $\lambda$ of $\nabla^2 \ell(\beta; x)$. \\
+	Set $\triangle \geq \frac{2\lambda}{\epsilon}$, sample $b \in \mathbb{R}^k$ from $\cN(0, \frac{\xi^2(8 log(\frac{2}{\delta}+4\epsilon))}{\epsilon^2}I_{k \times k})$. \\Return $\beta^{priv} = \argmin_{\beta \in \mathbb{F}} \hat{\cL}(\beta; \cD) + \frac{1}{(n+m}r(\beta) +\frac{\triangle}{2(n+m)}||\beta||_2^2+ \frac{b^T\beta}{n+m}$ . 
+\end{remark}
+\begin{lemma}[utility guarantee for $\beta$ under covariate shift]. let $\hat J(\theta; P,Q) = \frac{1}{n}\sum_{i=1}^n \ell(\beta ; x_i) + \frac{r(\beta)}{n}]$. Let $\beta = \argmin_{\beta \in \mathbb{F}} \hat J(\beta;P,Q) + \frac{\triangle}{2n}||\beta||_2^2$ and let $\beta^{priv}$ be the output of Obj-Pert, where $\mathbb{F}$ is a closed convex set. Then
+	$$
+	||\beta - \beta^{priv}||_2 \leq \frac{2||b||_2}{\triangle}
+	$$
+	Proof from Appendix D.(Kifer)
+\end{lemma}
+	\subsection{Utility Guarantees}
 We provide utility guarantees under both realizable and unrealizable cases. Let $R_P$ and $R_Q$ denote the risk of a hypothesis $h\in \cH$ on distribution $P$ and $Q$, respectively, namely,
 \begin{align*}
 R_P &= \min_{h\in \cH} \text{err}(h,P),\\
 R_Q &= \min_{h\in \cH} \text{err}(h,Q).
 \end{align*}
+
 Totally, we need to consider four different cases: (1) $R_P=0, R_Q=0$, (2) $R_P>0, R_Q>0$, (3) $R_P=0, R_Q>0$, and (4) $R_P>0, R_Q=0$. The first case is the realizable case, while other three are unrealizable ones. The following lemma shows that the last case never happens and it could be ignored.
 \begin{lemma}
 	Suppose if $P(x,y) > 0$, then $Q(x,y)>0$. If $\cH$ is realizable for $Q$, then $\forall x,y, \exists h\in \cH$, such that $Q(x,y)>0$ and $h(x)=y$. Therefore, $\cH$ is also realizable on $P$.
