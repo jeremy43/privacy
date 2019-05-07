@@ -155,7 +155,7 @@ def unpickle_cifar_dic(file):
   :return: tuple of (images, labels)
   """
   fo = open(file, 'rb')
-  dict = pickle.load(fo)
+  dict = pickle.load(fo,encoding='latin1')
   fo.close()
   return dict['data'], dict['labels']
 
@@ -183,15 +183,15 @@ def extract_cifar10(local_url, data_dir):
 
   if all_preprocessed:
     # Reload pre-processed training data from numpy dumps
-    with tf.gfile.Open(data_dir + preprocessed_files[0], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[0], mode='rb') as file_obj:
       train_data = np.load(file_obj)
-    with tf.gfile.Open(data_dir + preprocessed_files[1], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[1], mode='rb') as file_obj:
       train_labels = np.load(file_obj)
 
     # Reload pre-processed testing data from numpy dumps
-    with tf.gfile.Open(data_dir + preprocessed_files[2], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[2], mode='rb') as file_obj:
       test_data = np.load(file_obj)
-    with tf.gfile.Open(data_dir + preprocessed_files[3], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[3], mode='rb') as file_obj:
       test_labels = np.load(file_obj)
 
   else:
@@ -400,6 +400,25 @@ def ld_mnist(test_only=False, train_only = False):
     return train_data, train_labels
   else:
     return train_data, train_labels, test_data, test_labels
+
+def ld_adult(test_only = False, train_only = False):
+
+    file_Name = "../data/adult.data"
+    # open the file for writing
+    fileObject = open(file_Name, 'rb')
+    dataset = pickle.load(fileObject)
+    train_data = dataset['train_data']
+    train_label = dataset['train_label']
+    train_label = np.array(train_label)
+    test_data = dataset['test_data']
+    test_label = dataset['test_label']
+    test_label = np.array(test_label)
+    if test_only:
+      return test_data, test_label
+    elif train_only:
+      return train_data, train_label
+    else:
+      return train_data, train_label, test_data, test_label
 
 
 def partition_dataset(data, labels, nb_teachers, teacher_id):
