@@ -31,7 +31,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_integer('dropout_seed', 123, """seed for dropout.""")
 tf.app.flags.DEFINE_integer('batch_size', 128, """Nb of images in a batch.""")
 tf.app.flags.DEFINE_integer('epochs_per_decay', 350, """Nb epochs per decay""")
-tf.app.flags.DEFINE_integer('learning_rate', 2, """100 * learning rate""")
+tf.app.flags.DEFINE_integer('learning_rate', 3, """100 * learning rate""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """see TF doc""")
 
 
@@ -87,26 +87,23 @@ def inference_adult(input, dropout = False):
     :param dropout:
     :return:  Logits
     """
-    n_hidden_1 = 64  # 1st layer number of neurons
-    n_hidden_2 = 64  # 2nd layer number of neurons
+    n_hidden_1 = 32  # 1st layer number of neurons
+    n_hidden_2 = 16 # 2nd layer number of neurons
     n_input = 108
     n_classes = 2
-    weights = {
-        'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-        'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-        'out': tf.Variable(tf.random_normal([n_hidden_2, n_classes]))
-    }
-    biases = {
-        'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-        'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-        'out': tf.Variable(tf.random_normal([n_classes]))
-    }
-    # Hidden fully connected layer with 256 neurons
-    layer_1 = tf.add(tf.matmul(input, weights['h1']), biases['b1'])
-    # Hidden fully connected layer with 256 neurons
-    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
-    # Output fully connected layer with a neuron for each class
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
+    with tf.variable_scope('layer') as scope:
+
+        weight_1 = tf.Variable(tf.random_normal([n_input, n_hidden_1]))
+        b1 = tf.Variable(tf.random_normal([n_hidden_1]))
+        layer_1 = tf.add(tf.matmul(input, weight_1), b1)
+
+        weight_2 = tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2]))
+        b2 = tf.Variable(tf.random_normal([n_hidden_2]))
+        layer_2 = tf.add(tf.matmul(layer_1, weight_2), b2)
+
+        weight_3 = tf.Variable(tf.random_normal([n_hidden_2, n_classes]))
+        b3 = tf.Variable(tf.random_normal([n_classes]))
+        out_layer = tf.add(tf.matmul(layer_2, weight_3),b3)
     return out_layer
 def inference(images, dropout=False):
   """Build the CNN model.
@@ -609,7 +606,7 @@ def softmax_preds(images, ckpt_path, return_logits=False):
   if FLAGS.deeper:
     logits = inference_deeper(train_data_node)
   elif FLAGS.dataset == 'adult':
-    logits = inference_adult(train_data_node)
+      logits = inference_adult(train_data_node)
   else:
     logits = inference(train_data_node)
 
