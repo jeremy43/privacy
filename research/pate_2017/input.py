@@ -413,6 +413,7 @@ def ld_adult(test_only = False, train_only = False):
     test_data = dataset['test_data']
     test_label = dataset['test_label']
     test_label = np.array(test_label)
+
     if test_only:
       return test_data, test_label
     elif train_only:
