@@ -80,6 +80,34 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   return var
 
 
+def inference_adult(input, dropout = False):
+    """
+    This is a three layer network
+    :param input: the input is a vector
+    :param dropout:
+    :return:  Logits
+    """
+    n_hidden_1 = 64  # 1st layer number of neurons
+    n_hidden_2 = 64  # 2nd layer number of neurons
+    n_input = 108
+    n_classes = 2
+    weights = {
+        'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
+        'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
+        'out': tf.Variable(tf.random_normal([n_hidden_2, n_classes]))
+    }
+    biases = {
+        'b1': tf.Variable(tf.random_normal([n_hidden_1])),
+        'b2': tf.Variable(tf.random_normal([n_hidden_2])),
+        'out': tf.Variable(tf.random_normal([n_classes]))
+    }
+    # Hidden fully connected layer with 256 neurons
+    layer_1 = tf.add(tf.matmul(input, weights['h1']), biases['b1'])
+    # Hidden fully connected layer with 256 neurons
+    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
+    # Output fully connected layer with a neuron for each class
+    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
+    return out_layer
 def inference(images, dropout=False):
   """Build the CNN model.
   Args:
@@ -436,6 +464,10 @@ def _input_placeholder():
   if FLAGS.dataset == 'mnist':
     image_size = 28
     num_channels = 1
+  elif FLAGS.dataset == 'adult':
+    vector_size = 108
+    train_node_shape = (FLAGS.batch_size, vector_size)
+    return tf.placeholder(tf.float32, shape=train_node_shape)
   else:
     image_size = 32
     num_channels = 3
@@ -480,6 +512,8 @@ def train(images, labels, ckpt_path, weights=None,dropout=False):
     # Build a Graph that computes the logits predictions from the placeholder
     if FLAGS.deeper:
       logits = inference_deeper(train_data_node, dropout=dropout)
+    elif FLAGS.dataset == 'adult':
+      logits = inference_adult(train_data_node, dropout=dropout)
     else:
       logits = inference(train_data_node, dropout=dropout)
 
@@ -493,7 +527,7 @@ def train(images, labels, ckpt_path, weights=None,dropout=False):
     # Create a saver.
     saver = tf.train.Saver(tf.global_variables())
 
-    print("Graph constructed and saver created")
+    #print("Graph constructed and saver created")
 
     # Build an initialization operation to run below.
     init = tf.global_variables_initializer()
@@ -502,7 +536,7 @@ def train(images, labels, ckpt_path, weights=None,dropout=False):
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement)) #NOLINT(long-line)
     sess.run(init)
 
-    print("Session ready, beginning training loop")
+    #print("Session ready, beginning training loop")
 
     # Initialize the number of batches
     data_length = len(images)
@@ -574,6 +608,8 @@ def softmax_preds(images, ckpt_path, return_logits=False):
   # Build a Graph that computes the logits predictions from the placeholder
   if FLAGS.deeper:
     logits = inference_deeper(train_data_node)
+  elif FLAGS.dataset == 'adult':
+    logits = inference_adult(train_data_node)
   else:
     logits = inference(train_data_node)
 
