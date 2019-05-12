@@ -133,6 +133,7 @@ def pca_transform(dataset, FLAGS):
 
     elif dataset == 'cifar10':
         train_data, train_labels, test_data, test_labels= input.ld_cifar10(test_only, train_only)
+        dim = 3072
     elif dataset == 'mnist':
         train_data, train_labels, test_data, test_labels = input.ld_mnist(test_only, train_only)
         dim = 784
@@ -152,8 +153,8 @@ def pca_transform(dataset, FLAGS):
     projection = np.dot(test_data, max_component)
     min_v = np.min(projection)
     mean_v = np.mean(projection)
-    a = 1e3
-    b = 10
+    a = 1e-1
+    b = 2
     mu = min_v + (mean_v - min_v) / a
     var = (mean_v - min_v) / b
     prob = scipy.stats.norm(mu, var).pdf(projection)
@@ -161,12 +162,16 @@ def pca_transform(dataset, FLAGS):
     index = np.where(prob>0)[0]
     sample = np.random.choice(index,len(index),replace = True,p = prob/np.sum(prob))
     test_data = test_data[sample]
+    test_label = test_labels[sample]
     train_data = np.reshape(train_data, ori_train)
     test_data = np.reshape(test_data, ori_test)
+    test ={}
+    test['data'] = test_data
+    test['label'] = test_label
     f = open(teacher_file_name,'wb')
     pickle.dump(train_data, f)
     f = open(student_file_name, 'wb')
-    pickle.dump(test_data, f)
+    pickle.dump(test, f)
     print('finish pca transform')
 
 
@@ -188,8 +193,37 @@ def cov_logistic(FLAGS):
     student = pickle.load(f)
     assert input.create_dir_if_needed(FLAGS.train_dir)
     if FLAGS.dataset == 'mnist':
-        student = student.reshape(-1, 784)
+        student = student['data'].reshape(-1, 784)
         teacher = teacher.reshape(-1, 784)
+        # for pca reduce dimension
+        pca = PCA(n_components=60)
+        pca.fit(teacher)
+        max_component = pca.components_.T
+        teacher = np.dot(teacher, max_component)
+        pca.fit(student)
+        max_component = pca.components_.T
+        student= np.dot(student, max_component)
+        """
+        teacher = normalize(teacher)
+        student = normalize(student)
+        normalize_matrix =teacher
+        cov_matrix = np.matmul(np.transpose(normalize_matrix), normalize_matrix)
+        evals, evecs = LA.eigh(cov_matrix)
+        idx = np.argsort(evals)[::-1]
+        evecs = evecs[:, idx[:60]]
+        teacher = np.matmul(teacher, evecs)
+        student = np.matmul(student, evecs)
+        """
+    elif FLAGS.dataset == 'svhn':
+        teacher = teacher
+        student = student['data']
+        pca = PCA(n_components=70)
+        pca.fit(teacher)
+        max_component = pca.components_.T
+        teacher = np.dot(teacher, max_component)
+        pca.fit(student)
+        max_component = pca.components_.T
+        student = np.dot(student, max_component)
 
     y_t = np.ones(teacher.shape[0])
     y_t = np.expand_dims(y_t, axis=1)
@@ -208,6 +242,7 @@ def cov_logistic(FLAGS):
     clf = LogisticRegression(penalty='l2', C=2, solver='sag', multi_class='ovr').fit(dataset, label)
     print('non private  predict score for covshift = {}'.format(clf.score(dataset, label)))
     # add bias column for coef
+    """
     coeff = clf.coef_  # doesn't involve bias here, bias is self.intercept_
     bias = clf.intercept_
     bias = np.expand_dims(bias, axis=1)
@@ -215,6 +250,7 @@ def cov_logistic(FLAGS):
     coeff = np.concatenate((coeff, bias), axis=1)
     coeff = np.squeeze(coeff)
     # importance weight = p(x)/q(x) = np.exp(f(x))
+    """
     weight = np.exp(np.dot(student,coeff.T))
     return weight
 
