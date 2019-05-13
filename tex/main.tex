@@ -124,7 +124,7 @@
 % \AND instead of \And before the third author name.
 
 \author{
-	Yuqing Zhu \thanks{Equal contribution.}\\
+	Yuqing Zhu \thanks{Equal contribution}\\
 	Department of Computer Science \\
 	University of California, Santa Barbara \\
 	Santa Barbara, CA 93106 \\
@@ -166,6 +166,8 @@
 
 % talk about how this motivates crowdsourcing models/algorithms. Give example of crowdsourcing labeled data sets. Give example of when it hits the KDD community, quote Sheng, Provost, Ipeirotis.
 
+% 
+
 
 \subsection{Related Work}
 % pate
@@ -176,24 +178,27 @@
 \cite{dwork-14-the}
 
 % covariate shift and label shift, related to casual inference
-\cite{lipton-icml18-detecting}
-\cite{bickel-jmlr09-discriminative}
-\cite{mansour-colt09-domain}
-\cite{cortes-nips10-learning}
-Also, covariate shift and label shift can be understood as cause-effect learning and effect-cause learning in casual inference community \cite{scholkopf-icml12-on}.
-\cite{zhang-icml13-domain}
-\cite{gretton-chapter-covariate}
-\cite{azizzadenesheli-iclr18-regularized}
+Covariate shift was first proposed and well studied. It could be addressed as a kernel logistic regression problem \cite{bickel-jmlr09-discriminative}. In the same year, \cite{gretton-chapter-covariate} introduced the kernel mean matching method to covariate shift problems. By contrast, label shift just came to the attention of domain adaptation community in recent several years. Again, a kernel mean matching method was proposed in \cite{zhang-icml13-domain}, however, it cannot efficiently handle large datasets. Based on black-box classifiers, \cite{lipton-icml18-detecting} transforms the label shift problem to be importance weight estimation problem using confusion matrix, which was verified to be efficient on large datasets. Recently, a regularized learning method \cite{azizzadenesheli-iclr18-regularized} was proposed with a generalization error bound. Also, it is worth mentioning that covariate shift and label shift can be understood as cause-effect learning and effect-cause learning in casual inference community \cite{scholkopf-icml12-on}.
+
+% theoretical results of domain adaptation
+Without making assumptions of covariate or label shift, there are also several theoretical works of domain adaptation. In \cite{mansour-colt09-domain}, discrepancy distance was introduced to capture the difference between two different distributions, based on which a data-dependent Rademacher complexity learning bound was provided. Following the framework of importance weight estimation for domain adaptation problems, learning bounds were shown in \cite{cortes-nips10-learning} with both bounded weight and unbounded weight. Moreover, this work gives a general learning bound where an arbitrary function can be used to reweigh the cost of errors.
+
+
+
+
 
 \cite{Ji-ml13-differential}
 \cite{wang-ecml18-differentially}
 \cite{chen-aistat19-renyi}
+
+\cite{wang-uai18-revisiting}
 
 \subsection{Our Contributions and Results}
 % talk about our contributions
 % 
 
 \section{Problem setup}
+In this section, we introduce the symbols and notations used throughout this paper and then formally state the problem.
 \subsection{Symbols and Notations}
 Suppose now we have two different distributions $\mathcal{P}$ and $\mathcal{Q}$, and we have the items and their labels $(x_i,y_i)$ drawn i.i.d. from $\mathcal{P}$ where $i\in [n]$ is the index of the item and $n$ is the number of items. Also, we have $(\hat{x_j},\hat{y_j})$ drawn i.i.d. from $\mathcal{Q}$ where $j\in [m]$ is the index of the items and $m$ is the number of items.
 
@@ -353,6 +358,36 @@ Totally, we need to consider four different cases: (1) $R_P=0, R_Q=0$, (2) $R_P>
 	Throughout this paper, we are considering the importance weight $w=P(x,y)/Q(x,y)$. The assumption that if $P(x,y) > 0$, then $Q(x,y)>0$ is not artificial. It means $w<\infty$, i.e., $w$ is bounded.
 \end{remark}
 
+This section follows from model agnostic methods.
+\begin{algorithm}[htb] 
+	\caption{ $\cA_{\text{SubSample}}$Online Query Release via sub-sample and aggregate}
+	\label{alg:Framwork} 
+	\begin{algorithmic}[1] 
+		\REQUIRE ~~\\ 
+		dataset $D$, query Set $\cF = \{f_1, ..., f_m\}$ chosen online, range of the queries $\{ \cR_1, ..., \cR_m\}$, unstable query cutoff: $T$, privacy parameter $\epsilon, \delta > 0$, failure probability $\beta$\\
+		The set of unlabelled samples for current batch, $U_n$;\\
+		$k \gets 136\cdot \log(4mT  /\min(\delta, \beta/2)) \sqrt{(T\log(2/\delta))}/\epsilon$;\\
+		Arbitrarily split $D$ into $k$ non-overlapping chunks of size $n/k$, Call them $D_1, ..., D_k$;\\
+		\ENSURE ~~\\
+		\FOR{ $i$ \ $\in [m]$ }
+		\STATE Let $\cS_i = \{ f_i(D_1), ..., f_i(D_k)\} $, and for every $r \in \cR$, let $ct(r) = \text{times r appears in } \cS_i$;\\
+		\STATE $ \hat{f_i(D)} \gets \argmax_{r \in \cR_i}$, $dist_{\hat{f_i}} \gets \max \{ 0, (\max_{r \in \cR_i}[ct(r)] - max_{r \in \cR_i \setminus \hat{f_i(D)}}-1 \}$
+		\ENDFOR
+		\STATE Output $\cA_{OQR}(D, \{\hat{f_1}, ..., \hat{f_m}\}, \{dist_{\hat{f_1}}, ..., \{dist_{\hat{f_m}}\}, T, \epsilon, \delta$; 
+		\label{algorithm1}
+	\end{algorithmic}
+\end{algorithm}
+
+\begin{theorem}(utility guarantee)
+	Let $\cF$ denote any set of $m$ adaptively chosen queries, and $D$ be a dataset of $n$ samples drawn i.i.d from a fixed distribution $\cD$. For $ k = 136\cdot \log(4mT  /\min(\delta, \beta/2)) \sqrt{(T\log(2/\delta))}/\epsilon$ , let  $\bar{L} \subseteq  \cF$ be a set of queries s.t for every $f \in \bar{L}$, there exists some $x_f$ 
+	for which $f(\hat(D)=x+f$ w.p. at least 3/4 over drawing a dataset $\hat(D)$ of $n/k$ i.i.d. data samples from $\cD$.  If $|\tilde{L}| \geq m-T$, then w.p. at least $1 -\beta$ over the randomness of algorithm $\cA_{\text{subSamp}}$
+\end{theorem}
+
+\begin{example}
+	Take Mnist dataset as an example, where the size of private dataset is 60000(teacher), the size of public dataset is.10000(student). So $m=10000$, we need to answer m queries. Suppose $\delta = 1e-5, \epsilon = 1, \beta >> \delta, T = 100$, then $ k > 10^5/$, which is not achievable.
+\end{example}
+So agnostic model provides a way to derive utility guarantee for pate framework, such as with certain probability, the teacher is able to assign true label for each students.  If we want to combine it with cov-shift and label shift, rewrite differently private importance weight into a utility guarantee version, and then do a composition.
+
 \section{Experiments}
 \subsection{Experimental Settings}
 \begin{enumerate}
@@ -361,7 +396,7 @@ Totally, we need to consider four different cases: (1) $R_P=0, R_Q=0$, (2) $R_P>
 \end{enumerate}
 
 \subsection{Experimental Results}
-\begin{table}[]
+\begin{table}[t]
 \begin{tabular}{lllllll}
 knock out              & weight\_teacher & weight\_student & unweight\_teacher & un\_weight\_student & dataset & details                                                      \\
  0.01 & 0.91            & 0.905           & 0.895             & 0.935               & mnist   & 50 teacher, lr = 0.01, weight divided by sum then time to 10 \\
@@ -381,36 +416,6 @@ Dirchlet           & weight\_teacher & weight\_student & unweight\_teacher & un\
 \end{table}
 Each experiment is the average result of 10 independent experiments.
 
-\section{privacy guarantee and utility guarantee}
-This section follows from model agnostic methods.
-\begin{algorithm}[htb] 
-\caption{ $\cA_{\text{SubSample}}$Online Query Release via sub-sample and aggregate}
-\label{alg:Framwork} 
-\begin{algorithmic}[1] 
-\REQUIRE ~~\\ 
-dataset $D$, query Set $\cF = \{f_1, ..., f_m\}$ chosen online, range of the queries $\{ \cR_1, ..., \cR_m\}$, unstable query cutoff: $T$, privacy parameter $\epsilon, \delta > 0$, failure probability $\beta$\\
-The set of unlabelled samples for current batch, $U_n$;\\
-$k \gets 136\cdot \log(4mT  /\min(\delta, \beta/2)) \sqrt{(T\log(2/\delta))}/\epsilon$;\\
-Arbitrarily split $D$ into $k$ non-overlapping chunks of size $n/k$, Call them $D_1, ..., D_k$;\\
-\ENSURE ~~\\
-\FOR{ $i$ \ $\in [m]$ }
-\STATE Let $\cS_i = \{ f_i(D_1), ..., f_i(D_k)\} $, and for every $r \in \cR$, let $ct(r) = \text{times r appears in } \cS_i$;\\
-\STATE $ \hat{f_i(D)} \gets \argmax_{r \in \cR_i}$, $dist_{\hat{f_i}} \gets \max \{ 0, (\max_{r \in \cR_i}[ct(r)] - max_{r \in \cR_i \setminus \hat{f_i(D)}}-1 \}$
-\ENDFOR
-\STATE Output $\cA_{OQR}(D, \{\hat{f_1}, ..., \hat{f_m}\}, \{dist_{\hat{f_1}}, ..., \{dist_{\hat{f_m}}\}, T, \epsilon, \delta$; 
-\label{algorithm1}
-\end{algorithmic}
-\end{algorithm}
-
-\begin{theorem}(utility guarantee)
-Let $\cF$ denote any set of $m$ adaptively chosen queries, and $D$ be a dataset of $n$ samples drawn i.i.d from a fixed distribution $\cD$. For $ k = 136\cdot \log(4mT  /\min(\delta, \beta/2)) \sqrt{(T\log(2/\delta))}/\epsilon$ , let  $\bar{L} \subseteq  \cF$ be a set of queries s.t for every $f \in \bar{L}$, there exists some $x_f$ 
-for which $f(\hat(D)=x+f$ w.p. at least 3/4 over drawing a dataset $\hat(D)$ of $n/k$ i.i.d. data samples from $\cD$.  If $|\tilde{L}| \geq m-T$, then w.p. at least $1 -\beta$ over the randomness of algorithm $\cA_{\text{subSamp}}$
-\end{theorem}
-
-\begin{example}
-Take Mnist dataset as an example, where the size of private dataset is 60000(teacher), the size of public dataset is.10000(student). So $m=10000$, we need to answer m queries. Suppose $\delta = 1e-5, \epsilon = 1, \beta >> \delta, T = 100$, then $ k > 10^5/$, which is not achievable.
-\end{example}
-So agnostic model provides a way to derive utility guarantee for pate framework, such as with certain probability, the teacher is able to assign true label for each students.  If we want to combine it with cov-shift and label shift, rewrite differently private importance weight into a utility guarantee version, and then do a composition.
 \section{Conclusion}
 
 \bibliography{pate_shift.bib}
