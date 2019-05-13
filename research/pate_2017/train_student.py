@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+import time
 import numpy as np
 from six.moves import xrange
 import tensorflow as tf
@@ -29,27 +29,55 @@ import metrics
 import cov_shift
 FLAGS = tf.flags.FLAGS
 
-tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
-tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
-tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research','Temporary storage')
-tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/models','Where model chkpt are saved')
-tf.flags.DEFINE_string('teachers_dir','/Users/yuqing/github_proj/privacy/research/models',
+tf.flags.DEFINE_string('dataset', 'adult', 'The name of the dataset to use')
+tf.flags.DEFINE_integer('nb_labels', 2, 'Number of output classes')
+tf.flags.DEFINE_boolean('PATE2',True,'whether implement pate2')
+tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research/data','Temporary storage')
+tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/model','Where model chkpt are saved')
+tf.flags.DEFINE_string('teachers_dir','/Users/yuqing/github_proj/privacy/research/model',
                        'Directory where teachers checkpoints are stored.')
 tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data/', 'where pca data are saved ')
-tf.flags.DEFINE_integer('teachers_max_steps', 3000,
+tf.flags.DEFINE_integer('teachers_max_steps', 2500,
                         'Number of steps teachers were ran.')
 tf.flags.DEFINE_integer('max_steps', 2500, 'Number of steps to run student.')
-tf.flags.DEFINE_integer('nb_teachers', 2, 'Teachers in the ensemble.')
+tf.flags.DEFINE_integer('nb_teachers', 250, 'Teachers in the ensemble.')
+tf.flags.DEFINE_float('threshold', 300, 'Threshold for step 1 (selection).')
+tf.flags.DEFINE_float('sigma1', 200, 'Sigma for step 1 (selection).')
+tf.flags.DEFINE_float('sigma2', 40, 'Sigma for step 2 (argmax).')
 tf.flags.DEFINE_integer('stdnt_share', 1000,
                         'Student share (last index) of the test data')
-tf.flags.DEFINE_integer('lap_scale', 10,
-                        'Scale of the Laplacian noise added for privacy')#should be 10
+tf.flags.DEFINE_integer('lap_scale', 10,'Scale of the Laplacian noise added for privacy')#should be 10
+tf.flags.DEFINE_float('eps_shift', 1e-1,
+                        'Scale of the Laplacian noise added for privacy')
+tf.flags.DEFINE_float('delta_shift', 1e-6,
+                        'Scale of the Laplacian noise added for privacy')
 tf.flags.DEFINE_boolean('save_labels', False,
                         'Dump numpy arrays of labels and clean teacher votes')
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
-tf.flags.DEFINE_boolean('cov_shift', False, 'cov_shift instead of label shift')
+tf.flags.DEFINE_boolean('cov_shift', True, 'cov_shift instead of label shift')
 
+def gaussian(nb_labels,clean_votes):
+
+  # Sample independent Laplacian noise for each class
+  max_list = np.max(clean_votes, axis=1)
+
+  for i in range(len(clean_votes)):
+    max_list[i]+= FLAGS.sigma1*np.random.normal()
+
+  idx_keep = np.where(max_list >FLAGS.threshold)
+  label_release = clean_votes[idx_keep]
+  result = np.zeros(len(idx_keep[0]))
+  for idx, i in enumerate(label_release):
+    for item in xrange(nb_labels):
+      label_release[idx,item] +=  FLAGS.sigma2*np.random.normal()
+
+    # Result is the most frequent label
+    result[idx] = np.argmax(label_release[idx])
+
+  # Cast labels to np.int32 for compatibility with deep_cnn.py feed dictionaries
+  result = np.asarray(result, dtype=np.int32)
+  return idx_keep, result
 def ensemble_preds(dataset, nb_teachers, stdnt_data):
   """
   Given a dataset, a number of teachers, and some input data, this helper
@@ -74,9 +102,9 @@ def ensemble_preds(dataset, nb_teachers, stdnt_data):
   for teacher_id in xrange(nb_teachers):
     # Compute path of checkpoint file for teacher model with ID teacher_id
     if FLAGS.deeper:
-      ckpt_path = FLAGS.teachers_dir + '/' + str(dataset) + '_' + str(nb_teachers) + 'pca_teachers_' + str(teacher_id) + '_deep.ckpt-' + str(FLAGS.teachers_max_steps - 1) #NOLINT(long-line)
+      ckpt_path = FLAGS.teachers_dir + '/adult/' + str(dataset) + '_' + str(nb_teachers) + 'teachers_' + str(teacher_id) + '_deep.ckpt-' + str(FLAGS.teachers_max_steps - 1) #NOLINT(long-line)
     else:
-      ckpt_path = FLAGS.teachers_dir + '/' + str(dataset) + '_' + str(nb_teachers) + 'pca_teachers_' + str(teacher_id) + '.ckpt-' + str(FLAGS.teachers_max_steps - 1)  # NOLINT(long-line)
+      ckpt_path = FLAGS.teachers_dir + '/adult/' + str(dataset) + '_' + str(nb_teachers) + 'teachers_' + str(teacher_id) + '.ckpt-' + str(FLAGS.teachers_max_steps - 1)  # NOLINT(long-line)
 
     # Get predictions on our training data and store in result array
     result[teacher_id] = deep_cnn.softmax_preds(stdnt_data, ckpt_path)
@@ -109,6 +137,8 @@ def predict_data(dataset, nb_teachers, teacher = False):
     test_data, test_labels = input.ld_cifar10(test_only, train_only)
   elif dataset == 'mnist':
     test_data, test_labels = input.ld_mnist(test_only, train_only)
+  elif dataset == 'adult':
+    test_data, test_labels = input.ld_adult(test_only, train_only)
   else:
     print("Check value of dataset flag")
     return False
@@ -116,7 +146,7 @@ def predict_data(dataset, nb_teachers, teacher = False):
   teachers_preds = ensemble_preds(dataset, nb_teachers, test_data)
 
   # Aggregate teacher predictions to get student training labels
-  pred_labels = aggregation.noisy_max(teachers_preds, 0)
+  pred_labels = aggregation.noisy_max(FLAGS.nb_teachers, teachers_preds, 0)
   # Print accuracy of aggregated labels
   ac_ag_labels = metrics.accuracy(pred_labels, test_labels)
   print("obtain_weight Accuracy of the aggregated labels: " + str(ac_ag_labels))
@@ -144,6 +174,8 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
     test_data, test_labels = input.ld_cifar10(test_only=True)
   elif dataset == 'mnist':
     test_data, test_labels = input.ld_mnist(test_only=True)
+  elif dataset == 'adult':
+    test_data, test_labels = input.ld_adult(test_only = True)
   else:
     print("Check value of dataset flag")
     return False
@@ -154,8 +186,9 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
   if FLAGS.cov_shift == True:
     student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
     f = open(student_file_name, 'rb')
-    test_data = pickle.load(f)
-
+    test = pickle.load(f)
+    test_data = test['data']
+    test_labels = test['label']
   # Prepare [unlabeled] student training data (subset of test set)
   stdnt_data = test_data
 
@@ -175,7 +208,12 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
     stdnt_labels = aggregation.noisy_max(teachers_preds, FLAGS.lap_scale)
   else:
     # Request clean votes and clean labels as well
-    stdnt_labels, clean_votes, labels_for_dump = aggregation.noisy_max(teachers_preds, FLAGS.lap_scale, return_clean_votes=True) #NOLINT(long-line)
+    stdnt_labels, clean_votes, labels_for_dump = aggregation.noisy_max(FLAGS.nb_labels, teachers_preds, FLAGS.lap_scale, return_clean_votes=True) #NOLINT(long-line)
+
+    if FLAGS.PATE2 ==True:
+      keep_idx, result = gaussian(FLAGS.nb_labels,clean_votes)
+      gau_filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_votes_sigma1:' + str(
+        FLAGS.sigma1) + '_sigma2:' + str(FLAGS.sigma2) + '.npy'  # NOLINT(long-line)
 
     # Prepare filepath for numpy dump of clean votes
     filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes_lap_' + str(FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
@@ -192,9 +230,15 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
       np.save(file_obj, labels_for_dump)
 
   # Print accuracy of aggregated labels
-
-  ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels)
-  print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
+  if FLAGS.PATE2 == True:
+    with tf.gfile.Open(gau_filepath, mode='w') as file_obj:
+      np.save(file_obj, result)
+    ac_ag_labels = metrics.accuracy(result, test_labels[keep_idx])
+    print("number of gaussian student {}  Accuracy of the aggregated labels:{} ".format(len(result),ac_ag_labels))
+    return keep_idx,stdnt_data[keep_idx], result
+  else:
+    ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels)
+    print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
 
 
@@ -205,6 +249,7 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
     # Dump student noisy labels array
     with tf.gfile.Open(filepath, mode='w') as file_obj:
       np.save(file_obj, stdnt_labels)
+
 
   return stdnt_data, stdnt_labels
 
@@ -321,8 +366,13 @@ def train_student(dataset, nb_teachers, weight = True, inverse_w = None, shift_d
   assert input.create_dir_if_needed(FLAGS.train_dir)
 
   # Call helper function to prepare student data using teacher predictions
-  stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_data = shift_dataset)
-
+  if shift_dataset is not None:
+    stdnt_data, stdnt_labels= prepare_student_data(dataset, nb_teachers, save=True, shift_data = shift_dataset)
+  else:
+    if FLAGS.PATE2 == True:
+      keep_idx, stdnt_data, stdnt_labels = prepare_student_data(dataset, nb_teachers, save=True)
+    else:
+      stdnt_data, stdnt_labels = prepare_student_data(dataset, nb_teachers, save=True)
   # Unpack the student dataset, here stdnt_labels are already the ensemble noisy version
   # Prepare checkpoint filename and path
   if FLAGS.deeper:
@@ -348,66 +398,118 @@ def train_student(dataset, nb_teachers, weight = True, inverse_w = None, shift_d
       weights[i] = np.float32(inverse_w[stdnt_labels[i]])
 
   if weight == True:
-    assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
+    if FLAGS.PATE2 ==True:
+      assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights=weights[keep_idx])
+    else:
+      assert deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path, weights= weights)
   else:
     deep_cnn.train(stdnt_data, stdnt_labels, ckpt_path)
   # Compute final checkpoint name for student (with max number of steps)
   ckpt_path_final = ckpt_path + '-' + str(FLAGS.max_steps - 1)
-  private_data, private_labels = input.ld_mnist(test_only = False, train_only = True)
+  if dataset == 'adult':
+    private_data, private_labels = input.ld_adult(test_only = False, train_only= True)
+  elif dataset =='mnist':
+    private_data, private_labels = input.ld_mnist(test_only = False, train_only = True)
+  elif dataset =="svhn":
+    private_data, private_labels = input.ld_svhn(test_only=False, train_only=True)
   # Compute student label predictions on remaining chunk of test set
   teacher_preds = deep_cnn.softmax_preds(private_data, ckpt_path_final)
   student_preds =  deep_cnn.softmax_preds(stdnt_data, ckpt_path_final)
   # Compute teacher accuracy
   precision_t = metrics.accuracy(teacher_preds, private_labels)
   precision_s  = metrics.accuracy(student_preds, stdnt_labels)
-  if shift_dataset['version'] == 'ratio':
-    print('weight is {} shift_ratio={} Precision of teacher after training:{} student={}'.format(weight, shift_dataset['shift_ratio'], precision_t, precision_s))
-  elif shift_dataset['version'] == 'alpha':
-    print('weight is {} shift_ratio={} Precision of teacher after training:{} student={}'.format(weight, shift_dataset['alpha'], precision_t, precision_s))
+  if FLAGS.cov_shift == True:
+    student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
+    f = open(student_file_name, 'rb')
+    test = pickle.load(f)
+    if FLAGS.PATE2 == True:
+      test_labels = test['label'][keep_idx]
+    else:
+      test_labels = test['label']
+  precision_true = metrics.accuracy(student_preds, test_labels)
+  print('Precision of teacher after training:{} student={} true precision for student {}'.format(precision_t, precision_s,precision_true))
 
-  return precision_t, precision_s
+  return len(test_labels),precision_t, precision_s
 
 def main(argv=None): # pylint: disable=unused-argument
   # Run student training according to values specified in flags
 
+  wei_precision_t = []
+  wei_precision_s = []
+  non_precision_t = []
+  non_precision_s = []
   if FLAGS.cov_shift == True:
     #cov_shift.pca_transform(FLAGS.dataset, FLAGS)
-    #student_data = cov_shift.prepare_cov_shift(FLAGS.dataset, 1, 1)
-    theta = cov_shift.logistic(FLAGS) # theta is the parameter in logistic, used for importance weight
+    #theta = cov_shift.cov_logistic(FLAGS) # theta is the parameter in logistic, used for importance weight
+    import pickle
+    theta_path = FLAGS.dataset +'theta.pkl'
+    f = open(theta_path, 'rb')
+    #pickle.dump(theta, f)
+    theta = pickle.load(f)
+    s1 = np.sum(theta)
+    theta = len(theta)/s1*theta
+    theta = np.ravel(theta)
+    print('theta max={} mean={} min = {}'.format(np.max(theta), np.mean(theta),np.min(theta)))
     for weight in [True, False]:
-      assert train_student(FLAGS.dataset, FLAGS.nb_teachers, weight, theta)
+      num_query,ac_t, ac_s = train_student(FLAGS.dataset, FLAGS.nb_teachers, weight=weight, inverse_w=theta)
+      ac_t = round(ac_t, 2)
+      ac_s = round(ac_s, 2)
+      print('weight={} ac_t={} ac_s={}'.format(weight, ac_t, ac_s))
+      if weight == True:
+        wei_precision_t.append(ac_t)
+        wei_precision_s.append(ac_s)
+      else:
+        non_precision_t.append(ac_t)
+        non_precision_s.append(ac_s)
   else:
     for knock in [False]:
-    # here 2 is the number of teacher to estimate weight
-    # knock is False refer to derichlet shift
-    # We average the accuracy results for 10 time
-      precision_t = []
-      precision_s = []
-      for idx in range(10):
-        shift_dataset, inverse_w = obtain_weight(knock, FLAGS.dataset, 2)
+      # here 2 is the number of teacher to estimate weight
+      # knock is False refer to derichlet shift
+      # We average the accuracy results for 10 time
+      for idx in range(5):
+        shift_dataset, inverse_w = obtain_weight(knock, FLAGS.dataset, FLAGS.nb_teachers)
         print('******* inverse_weight={}'.format(inverse_w))
         sum = np.sum(inverse_w)
-        inverse_w = [ x/sum*10 for x in inverse_w]
+        for iidx, x in enumerate(inverse_w):
+          if x > 30:
+            inverse_w[iidx] = 30
+            print('max_value={}'.format(x))
+        inverse_w = [x / sum * 10 for x in inverse_w]
         print('inverse weight = {}'.format(inverse_w))
         for weight in [True, False]:
-          ac_t, ac_s = train_student(FLAGS.dataset, FLAGS.nb_teachers,weight, inverse_w, shift_dataset)
-          precision_t.append(ac_t)
-          precision_s.append(ac_s)
+          ac_t, ac_s = train_student(FLAGS.dataset, FLAGS.nb_teachers, weight=weight, inverse_w=inverse_w,shift_dataset=shift_dataset)
+          ac_t = round(ac_t, 2)
+          ac_s = round(ac_s, 2)
+          if weight == True:
+            wei_precision_t.append(ac_t)
+            wei_precision_s.append(ac_s)
+          else:
+            non_precision_t.append(ac_t)
+            non_precision_s.append(ac_s)
 
-  ckpt_path = FLAGS.train_dir + '/' + str(FLAGS.dataset) + 'result.txt'
-  with open(ckpt_path, 'w') as f:
-    if knock == True:
-      f.write('knock out methods:\n')
-    else:
-      f.write('dirshlet methods:\n')
-    f.write('teacher prediction\n')
-    for item in precision_t:
-      f.write(item)
-    f.write('\n')
-    f.write('student prediction\n')
-    for item in precision_s:
-      f.write(item)
-    f.write('\n')
+    ckpt_path = FLAGS.train_dir + '/' + str(FLAGS.dataset) + 'result.txt'
+
+    with open(ckpt_path, 'w') as f:
+      if FLAGS.cov_shift == True:
+        f.write('PCA methods:\n')
+        f.write('PATE2={} thresh= {} sigma1={} sigma2={}'.format(FLAGS.PATE2,FLAGS.threshold, FLAGS.sigma1,FLAGS.sigma2))
+        f.write('\n')
+       # f.write('total query={} answer query={}'.format(len(theta),num_query))
+      elif knock == True:
+        f.write('knock out methods:\n')
+      else:
+        f.write('dirshlet methods:\n' + str(0.03))
+      f.write('weighted prediction with first teacher then students\n')
+      for idx, item in enumerate(wei_precision_t):
+        f.write('teacher:' + str(wei_precision_t[idx]) + ' student' + str(wei_precision_s[idx]))
+      f.write('\n')
+      f.write('nonweight prediction\n')
+      for idx, item in enumerate(non_precision_t):
+        f.write('teacher:' + str(non_precision_t[idx]) + ' student' + str(non_precision_s[idx]))
+
+      f.write('\n')
+
+
 if __name__ == '__main__':
 
   tf.app.run()
