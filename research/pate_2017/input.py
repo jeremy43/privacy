@@ -125,7 +125,7 @@ def extract_svhn(local_url):
   :return:
   """
 
-  with tf.gfile.Open(local_url, mode='r') as file_obj:
+  with tf.gfile.Open(local_url, mode='rb') as file_obj:
     # Load MATLAB matrix using scipy IO
     dict = loadmat(file_obj)
 
@@ -155,7 +155,7 @@ def unpickle_cifar_dic(file):
   :return: tuple of (images, labels)
   """
   fo = open(file, 'rb')
-  dict = pickle.load(fo)
+  dict = pickle.load(fo,encoding='latin1')
   fo.close()
   return dict['data'], dict['labels']
 
@@ -183,15 +183,15 @@ def extract_cifar10(local_url, data_dir):
 
   if all_preprocessed:
     # Reload pre-processed training data from numpy dumps
-    with tf.gfile.Open(data_dir + preprocessed_files[0], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[0], mode='rb') as file_obj:
       train_data = np.load(file_obj)
-    with tf.gfile.Open(data_dir + preprocessed_files[1], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[1], mode='rb') as file_obj:
       train_labels = np.load(file_obj)
 
     # Reload pre-processed testing data from numpy dumps
-    with tf.gfile.Open(data_dir + preprocessed_files[2], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[2], mode='rb') as file_obj:
       test_data = np.load(file_obj)
-    with tf.gfile.Open(data_dir + preprocessed_files[3], mode='r') as file_obj:
+    with tf.gfile.Open(data_dir + preprocessed_files[3], mode='rb') as file_obj:
       test_labels = np.load(file_obj)
 
   else:
@@ -306,36 +306,26 @@ def ld_svhn(extended=False, test_only=False, train_only = False):
 
   # Maybe download data and retrieve local storage urls
   local_urls = maybe_download(file_urls, FLAGS.data_dir)
+  train_images = np.load('{}/svhn_train_images.npy'.format(FLAGS.data_dir)).astype(np.float32)
+  train_labels = np.load('{}/svhn_train_labels.npy'.format(FLAGS.data_dir)).astype(np.float32)
+  test_images = np.load('{}/svhn_test_images.npy'.format(FLAGS.data_dir)).astype(np.float32)
+  test_labels = np.load('{}/svhn_test_labels.npy'.format(FLAGS.data_dir)).astype(np.float32)
 
   # Extra Train, Test, and Extended Train data
-  if not test_only:
-    # Load and applying whitening to train data
-    train_data, train_labels = extract_svhn(local_urls[0])
-    train_data = image_whitening(train_data)
-
-    # Load and applying whitening to extended train data
-    ext_data, ext_labels = extract_svhn(local_urls[2])
-    ext_data = image_whitening(ext_data)
-
-  # Load and applying whitening to test data
-  test_data, test_labels = extract_svhn(local_urls[1])
-  test_data = image_whitening(test_data)
 
   if test_only:
-    return test_data, test_labels
+    return test_images, test_labels
   else:
-    if extended:
+    if train_only:
+      return train_images, train_labels
       # Stack train data with the extended training data
-      train_data = np.vstack((train_data, ext_data))
-      train_labels = np.hstack((train_labels, ext_labels))
-
-      return train_data, train_labels, test_data, test_labels
+      #train_data = np.vstack((train_images, ext_data))
+      #train_labels = np.hstack((train_labels, ext_labels))
     else:
-      if train_only:
-        return train_data, train_labels
+      return train_images, train_labels, test_images, test_labels
+
       # Return training and extended training data separately
-      else:
-        return train_data,train_labels, test_data,test_labels, ext_data,ext_labels
+
 
 
 def ld_cifar10(test_only=False, train_only = False):
@@ -400,6 +390,26 @@ def ld_mnist(test_only=False, train_only = False):
     return train_data, train_labels
   else:
     return train_data, train_labels, test_data, test_labels
+
+def ld_adult(test_only = False, train_only = False):
+
+    file_Name = "../data/adult.data"
+    # open the file for writing
+    fileObject = open(file_Name, 'rb')
+    dataset = pickle.load(fileObject)
+    train_data = dataset['train_data']
+    train_label = dataset['train_label']
+    train_label = np.array(train_label)
+    test_data = dataset['test_data']
+    test_label = dataset['test_label']
+    test_label = np.array(test_label)
+
+    if test_only:
+      return test_data, test_label
+    elif train_only:
+      return train_data, train_label
+    else:
+      return train_data, train_label, test_data, test_label
 
 
 def partition_dataset(data, labels, nb_teachers, teacher_id):
