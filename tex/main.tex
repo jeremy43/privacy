@@ -356,7 +356,9 @@ Totally, we need to consider four different cases: (1) $R_P=0, R_Q=0$, (2) $R_P>
 \section{Experiments}
 \subsection{Experimental Settings}
 \begin{enumerate}
-	\item For covariate shift, we generate bias sampling schemes over the features following \cite{gre_cov}. Specifically,  we first did PCA on public dataset, and select the first principal component of the training data and the corresponding projection values. Denoting the minimum value of the projection as $m$ and the mean as $\bar{m}$, we applied a normal distribution with mean $m + (\bar{m}-m)/a$ and variance $(\bar{m}-m)/b$ as the biased sampling scheme.
+	\item we test our model on Mnist and Adult dataset. For each dataset, we leave the training dataset as the private dataset, and simulate label shift or covariate shift on test dataset.
+	\item  For covariate shift, we generate bias sampling schemes over the features following \cite{gre_cov}. Specifically,  we first did PCA on public dataset, and select the first principal component of the training data and the corresponding projection values. Denoting the minimum value of the projection as $m$ and the mean as $\bar{m}$, we applied a normal distribution with mean $m + (\bar{m}-m)/a$ and variance $(\bar{m}-m)/b$ as the biased sampling scheme. A large $a$ will simulate a more apparant covariate shift, here we compare the experiements under different covariate shift setting.
+	\item To solve a differential private logistic regression problem, we adopt the object perturbation by Kifer. 
 	\item For label shift simulation, we adopt two sampling schemes. In $\textbf{knock-out shift}$, we knock out a fraction $\delta$ of data points from a given class from test and validation sets.(We assume the training set is the private dataset). In \textbf{Dirichlet shift}, we draw $p_\cQ(y)$ from a DIrichlet distribution with concentration parameter $\alpha$. With uniform $p_{\cQ}(y)$, Dirichlet shift is bigger for smaller $\alpha$.
 \end{enumerate}
 
@@ -379,7 +381,8 @@ Dirchlet           & weight\_teacher & weight\_student & unweight\_teacher & un\
                     &                 &                 &                   &                     &         &                                                             
 \end{tabular}
 \end{table}
-Each experiment is the average result of 10 independent experiments.
+
+
 
 \section{privacy guarantee and utility guarantee}
 This section follows from model agnostic methods.
