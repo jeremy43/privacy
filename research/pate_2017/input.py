@@ -124,10 +124,10 @@ def extract_svhn(local_url):
   :param local_url:
   :return:
   """
-
+  
   with tf.gfile.Open(local_url, mode='rb') as file_obj:
     # Load MATLAB matrix using scipy IO
-    dict = loadmat(file_obj)
+    dict = loadmat(local_url)
 
     # Extract each dictionary (one for data, one for labels)
     data, labels = dict["X"], dict["y"]
@@ -291,7 +291,7 @@ def extract_mnist_labels(filename, num_images):
       return np.load(file_obj)
 
 
-def ld_svhn(extended=False, test_only=False, train_only = False):
+def ld_svhn(extended=False, test_only=False, train_only = False, all=False):
   """
   Load the original SVHN data
   :param extended: include extended training data in the returned array
@@ -306,10 +306,41 @@ def ld_svhn(extended=False, test_only=False, train_only = False):
 
   # Maybe download data and retrieve local storage urls
   local_urls = maybe_download(file_urls, FLAGS.data_dir)
-  train_images = np.load('{}/svhn_train_images.npy'.format(FLAGS.data_dir)).astype(np.float32)
-  train_labels = np.load('{}/svhn_train_labels.npy'.format(FLAGS.data_dir)).astype(np.float32)
-  test_images = np.load('{}/svhn_test_images.npy'.format(FLAGS.data_dir)).astype(np.float32)
-  test_labels = np.load('{}/svhn_test_labels.npy'.format(FLAGS.data_dir)).astype(np.float32)
+  if not test_only:
+    # Load and applying whitening to train data
+    train_data, train_labels = extract_svhn(local_urls[0])
+    train_data = image_whitening(train_data)
+
+    # Load and applying whitening to extended train data
+    #ext_data, ext_labels = extract_svhn(local_urls[2])
+    #ext_data = image_whitening(ext_data)
+
+  # Load and applying whitening to test data
+  test_data, test_labels = extract_svhn(local_urls[1])
+  test_data = image_whitening(test_data)
+  if test_only:
+    return test_data, test_labels
+  elif extended is True and train_only is False:
+     # Stack train data with the extended training data
+    ext_data, ext_labels = extract_svhn(local_urls[2])
+    ext_data = image_whitening(ext_data)
+    train_data = np.vstack((train_data, ext_data))
+    train_labels = np.hstack((train_labels, ext_labels))
+        
+    return train_data, train_labels, test_data, test_labels
+  elif train_only:
+    return train_data, train_labels
+      # Return training and extended training data separately
+  else:
+    return train_data, train_labels, test_data, test_labels
+  """
+  print('address={}/svhn/train_images.npy'.format(FLAGS.data_dir))
+  train_images = np.load('{}/svhn/train_images.npy'.format(FLAGS.data_dir)).astype(np.float32)
+  train_images = train_images.reshape([-1,32,32,3])
+  train_labels = np.load('{}/svhn/train_labels.npy'.format(FLAGS.data_dir)).astype(np.int32)
+  test_images = np.load('{}/svhn/test_images.npy'.format(FLAGS.data_dir)).astype(np.float32)
+  test_images = test_images.reshape([-1,32,32,3])
+  test_labels = np.load('{}/svhn/test_labels.npy'.format(FLAGS.data_dir)).astype(np.int32)
 
   # Extra Train, Test, and Extended Train data
 
@@ -325,7 +356,7 @@ def ld_svhn(extended=False, test_only=False, train_only = False):
       return train_images, train_labels, test_images, test_labels
 
       # Return training and extended training data separately
-
+"""
 
 
 def ld_cifar10(test_only=False, train_only = False):
