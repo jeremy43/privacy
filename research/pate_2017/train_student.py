@@ -58,6 +58,26 @@ tf.flags.DEFINE_boolean('save_labels', False,
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
 tf.flags.DEFINE_boolean('cov_shift', True, 'cov_shift instead of label shift')
 
+def convert_vat(idx, result):
+
+  student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
+  f = open(student_file_name, 'rb')
+  log ={}
+  gt = pickle.load(f)
+  gt_test_data = gt['data'].reshape([-1,32*32*3])
+  gt_test_label = gt['label']
+  train_data = np.delete(gt_test_data,idx, axis=0)
+  train_label = np.delete(gt_test_label,idx,axis=0)
+  log['test_data'] = gt_test_data
+  log['test_label'] = gt_test_label
+  log['train_data'] = train_data
+  log['train_label'] = train_label
+  log['labeled_data'] =gt_test_data[idx]
+  log['labeled_label'] = result
+  file_vat = "../../vat_tf/log/"+FLAGS.dataset+'_query='+str(len(result))+'.pkl'
+  with open(file_vat,'wb') as f:
+    pickle.dump(log, f)
+
 def gaussian(nb_labels,clean_votes):
 
   # Sample independent Laplacian noise for each class
@@ -78,7 +98,8 @@ def gaussian(nb_labels,clean_votes):
 
   # Cast labels to np.int32 for compatibility with deep_cnn.py feed dictionaries
   result = np.asarray(result, dtype=np.int32)
-  limit = 1200
+  convert_vat(idx_keep, result)
+  limit = len(result)
 
   return (idx_keep[0][:limit],), result[:limit]
 def ensemble_preds(dataset, nb_teachers, stdnt_data):
