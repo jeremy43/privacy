@@ -21,6 +21,7 @@ import time
 import numpy as np
 from six.moves import xrange
 import tensorflow as tf
+import os
 import pickle
 import aggregation
 import deep_cnn
@@ -30,8 +31,8 @@ import cov_shift
 FLAGS = tf.flags.FLAGS
 
 
-tf.flags.DEFINE_string('dataset', 'adult', 'The name of the dataset to use')
-tf.flags.DEFINE_integer('nb_labels', 2, 'Number of output classes')
+tf.flags.DEFINE_string('dataset', 'svhn', 'The name of the dataset to use')
+tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 tf.flags.DEFINE_boolean('PATE2',True,'whether implement pate2')
 tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research/data','Temporary storage')
 tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/model','Where model chkpt are saved')
@@ -40,7 +41,7 @@ tf.flags.DEFINE_string('teachers_dir','/Users/yuqing/github_proj/privacy/researc
 tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data/', 'where pca data are saved ')
 tf.flags.DEFINE_integer('teachers_max_steps', 2500,
                         'Number of steps teachers were ran.')
-tf.flags.DEFINE_integer('max_steps', 2500, 'Number of steps to run student.')
+tf.flags.DEFINE_integer('max_steps', 3500, 'Number of steps to run student.')
 tf.flags.DEFINE_integer('nb_teachers', 250, 'Teachers in the ensemble.')
 tf.flags.DEFINE_float('threshold', 300, 'Threshold for step 1 (selection).')
 tf.flags.DEFINE_float('sigma1', 200, 'Sigma for step 1 (selection).')
@@ -77,7 +78,9 @@ def gaussian(nb_labels,clean_votes):
 
   # Cast labels to np.int32 for compatibility with deep_cnn.py feed dictionaries
   result = np.asarray(result, dtype=np.int32)
-  return idx_keep, result
+  limit = 1200
+
+  return (idx_keep[0][:limit],), result[:limit]
 def ensemble_preds(dataset, nb_teachers, stdnt_data):
   """
   Given a dataset, a number of teachers, and some input data, this helper
@@ -165,9 +168,6 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
                the labels assigned by teachers
   :return: pairs of (data, labels) to be used for student training and testing
   """
-  assert input.create_dir_if_needed(FLAGS.train_dir)
-
-  # Load the dataset
   if dataset == 'svhn':
     test_data, test_labels = input.ld_svhn(test_only=True)
   elif dataset == 'cifar10':
@@ -179,10 +179,6 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
   else:
     print("Check value of dataset flag")
     return False
-
-
-  # Make sure there is data leftover to be used as a test set
-  assert FLAGS.stdnt_share < len(test_data)
   if FLAGS.cov_shift == True:
     student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
     f = open(student_file_name, 'rb')
@@ -191,6 +187,34 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
     test_labels = test['label']
   # Prepare [unlabeled] student training data (subset of test set)
   stdnt_data = test_data
+
+  assert input.create_dir_if_needed(FLAGS.train_dir)
+  gau_filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_votes_sigma1:' + str(
+    FLAGS.sigma1) + '_sigma2:' + str(FLAGS.sigma2) + '.npy'  # NOLINT(long-line)
+
+  # Prepare filepath for numpy dump of clean votes
+  filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes_lap_' + str(
+    FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
+
+  # Prepare filepath for numpy dump of clean labels
+  filepath_labels = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_teachers_labels_lap_' + str(
+    FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
+  if os.path.exists(filepath):
+    if FLAGS.PATE2 == True:
+      with open(filepath,'rb')as f:
+        clean_votes = np.load(f)
+        keep_idx, result = gaussian(FLAGS.nb_labels, clean_votes)
+        precision_true = metrics.accuracy(result, test_labels[keep_idx])
+        print('number of idx={}'.format(len(keep_idx[0])))
+        return keep_idx, stdnt_data[keep_idx], result
+
+
+  # Load the dataset
+
+
+  # Make sure there is data leftover to be used as a test set
+  assert FLAGS.stdnt_share < len(test_data)
+
 
   if shift_data is not None:
       #no noise
@@ -212,14 +236,6 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
 
     if FLAGS.PATE2 ==True:
       keep_idx, result = gaussian(FLAGS.nb_labels,clean_votes)
-      gau_filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_votes_sigma1:' + str(
-        FLAGS.sigma1) + '_sigma2:' + str(FLAGS.sigma2) + '.npy'  # NOLINT(long-line)
-
-    # Prepare filepath for numpy dump of clean votes
-    filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes_lap_' + str(FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
-
-    # Prepare filepath for numpy dump of clean labels
-    filepath_labels = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_teachers_labels_lap_' + str(FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
 
     # Dump clean_votes array
     with tf.gfile.Open(filepath, mode='w') as file_obj:
