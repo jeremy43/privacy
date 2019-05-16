@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import tensorflow as tf
+import numpy as np
 
 def batch_indices(batch_nb, data_length, batch_size):
   """
@@ -33,3 +34,36 @@ def batch_indices(batch_nb, data_length, batch_size):
     end -= shift
 
   return start, end
+
+def save_file(path, file):
+  with tf.gfile.Open(path, mode='w') as file_obj:
+    np.save(file_obj, file)
+
+def load_dataset(dataset, test_only=False, train_only=False):
+
+  if dataset == 'svhn':
+    test_data, test_labels = input.ld_svhn(test_only=test_only)
+    return test_data, test_labels
+  elif dataset == 'cifar10':
+    test_data, test_labels = input.ld_cifar10(test_only=test_only)
+  elif dataset == 'mnist':
+    test_data, test_labels = input.ld_mnist(test_only=test_only)
+  elif dataset == 'adult':
+    test_data, test_labels = input.ld_adult(test_only = test_only)
+  else:
+    print("Check value of dataset flag")
+  return test_data, test_labels
+def create_path(FLAGS,dataset, nb_teachers):
+  assert input.create_dir_if_needed(FLAGS.train_dir)
+  gau_filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_votes_sigma1:' + str(
+    FLAGS.sigma1) + '_sigma2:' + str(FLAGS.sigma2) + '.npy'  # NOLINT(long-line)
+
+  # Prepare filepath for numpy dump of clean votes
+  filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes_label_shift' + str(
+    FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
+
+  # Prepare filepath for numpy dump of clean labels
+  filepath_labels = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_teachers_labels_' + str(
+    FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
+
+  return gau_filepath,filepath,filepath_labels
