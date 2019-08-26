@@ -14,6 +14,7 @@
 # ==============================================================================
 import tensorflow as tf
 import numpy as np
+import input
 
 def batch_indices(batch_nb, data_length, batch_size):
   """
@@ -53,6 +54,7 @@ def load_dataset(dataset, test_only=False, train_only=False):
   else:
     print("Check value of dataset flag")
   return test_data, test_labels
+
 def create_path(FLAGS,dataset, nb_teachers):
   assert input.create_dir_if_needed(FLAGS.train_dir)
   gau_filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_votes_sigma1:' + str(

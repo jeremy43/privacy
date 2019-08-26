@@ -126,16 +126,23 @@ def pca_transform(dataset, FLAGS):
         #return
     test_only = False
     train_only = False
-    dim = 784
+
     # Load the dataset
     if dataset == 'svhn':
+        dim = 3072
         train_data, train_labels, test_data, test_labels = input.ld_svhn(test_only, train_only)
-
+        ori_train = train_data.shape
+        ori_test = test_data.shape
+        test_data = test_data.reshape((-1, dim))
+        train_data = train_data.reshape((-1, dim))
     elif dataset == 'cifar10':
         train_data, train_labels, test_data, test_labels= input.ld_cifar10(test_only, train_only)
         dim = 3072
     elif dataset == 'mnist':
+
         train_data, train_labels, test_data, test_labels = input.ld_mnist(test_only, train_only)
+        ori_train = train_data.shape
+        ori_test = test_data.shape
         dim = 784
         test_data = test_data.reshape((-1, dim))
         train_data = train_data.reshape((-1, dim))
@@ -145,19 +152,21 @@ def pca_transform(dataset, FLAGS):
     else:
         print("Check value of dataset flag")
         return False
-    ori_train = train_data.shape
-    ori_test = test_data.shape
+
     pca = PCA(n_components=1)
     pca.fit(test_data)
     max_component =pca.components_.T
     projection = np.dot(test_data, max_component)
     min_v = np.min(projection)
     mean_v = np.mean(projection)
-    a = 1e-1
-    b = 2
+    a = 1e2
+    b = 1
     mu = min_v + (mean_v - min_v) / a
     var = (mean_v - min_v) / b
     prob = scipy.stats.norm(mu, var).pdf(projection)
+    true_prob = np.ones(len(test_data))/len(test_data)
+    true_ratio = true_prob/prob*np.sum(prob)
+
     prob = np.ravel(prob.T) # transform into 1d dim
     index = np.where(prob>0)[0]
     sample = np.random.choice(index,len(index),replace = True,p = prob/np.sum(prob))
@@ -168,6 +177,7 @@ def pca_transform(dataset, FLAGS):
     test ={}
     test['data'] = test_data
     test['label'] = test_label
+    test['index'] =sample
     f = open(teacher_file_name,'wb')
     pickle.dump(train_data, f)
     f = open(student_file_name, 'wb')
@@ -215,8 +225,8 @@ def cov_logistic(FLAGS):
         student = np.matmul(student, evecs)
         """
     elif FLAGS.dataset == 'svhn':
-        teacher = teacher
-        student = student['data']
+        teacher = teacher.reshape((-1,3072))
+        student = student['data'].reshape((-1,3072))
         pca = PCA(n_components=70)
         pca.fit(teacher)
         max_component = pca.components_.T

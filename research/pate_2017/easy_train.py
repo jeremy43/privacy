@@ -82,15 +82,17 @@ def convert_vat(idx, result):
 def gaussian(nb_labels,clean_votes,shift_idx):
 
   # Sample independent Laplacian noise for each class
-  max_list = np.max(clean_votes, axis=1)
+  shift_clean_votes = clean_votes[shift_idx]
+  max_list = np.max(shift_clean_votes, axis=1)
 
-  for i in range(len(clean_votes)):
+  for i in range(len(shift_clean_votes)):
     max_list[i]+= FLAGS.sigma1*np.random.normal()
 
   idx_keep = np.where(max_list >FLAGS.threshold)
-  idx_keep = np.intersect1d(idx_keep,shift_idx)
-  label_release = clean_votes[idx_keep]
-  result = np.zeros(len(idx_keep[0]))
+
+  label_release = shift_clean_votes[idx_keep]
+  idx_keep = shift_idx[idx_keep]
+  result = np.zeros(len(idx_keep))
   for idx, i in enumerate(label_release):
     for item in xrange(nb_labels):
       label_release[idx,item] +=  FLAGS.sigma2*np.random.normal()
@@ -101,9 +103,8 @@ def gaussian(nb_labels,clean_votes,shift_idx):
   # Cast labels to np.int32 for compatibility with deep_cnn.py feed dictionaries
   result = np.asarray(result, dtype=np.int32)
   convert_vat(idx_keep, result)
-  limit = len(result)
 
-  return (idx_keep[0][:limit],), result[:limit]
+  return (idx_keep,), result
 
 
 
@@ -135,9 +136,8 @@ def prepare_student_data(dataset, nb_teachers,shift_idx,nb_q=None):
   if nb_q !=None:
       shift_idx = np.random.choice(shift_idx, nb_q)
 
-  # Prepare filepath for numpy dump of clean votes
-  filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes' + str(
-    FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
+  # Prepare filepath for numpy dump of clean votessvhn_250_student_clean_test.npy
+  filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_test.npy'  # NOLINT(long-line)
 
   if os.path.exists(filepath):
 
@@ -378,23 +378,22 @@ def main(argv=None): # pylint: disable=unused-argument
   non_precision_t = []
   non_precision_s = []
   if FLAGS.cov_shift == True:
-    cov_shift.pca_transform(FLAGS.dataset, FLAGS)
-    theta = cov_shift.cov_logistic(FLAGS) # theta is the parameter in logistic, used for importance weight
+    #cov_shift.pca_transform(FLAGS.dataset, FLAGS)
+    #theta = cov_shift.cov_logistic(FLAGS) # theta is the parameter in logistic, used for importance weight
     import pickle
+    theta_path = FLAGS.dataset + 'theta.pkl'
+    f = open(theta_path, 'rb')
+    theta = pickle.load(f)
+    # pickle.dump(theta, f)
     student_file_name = FLAGS.data + 'PCA_student' + FLAGS.dataset + '.pkl'
     f = open(student_file_name, 'rb')
+    #pickle.dump(theta,f)
     shift_dataset = pickle.load(f)
     shift_idx, stdnt_test, stdnt_pred = prepare_student_data(FLAGS.dataset, FLAGS.nb_teachers, shift_dataset['index'])
     shift_dataset['pred'] = stdnt_pred
     shift_dataset['index'] = shift_idx
     shift_dataset['label'] = stdnt_labels[shift_idx]
     shift_dataset['data'] = stdnt_data[shift_idx]
-
-    theta_path = FLAGS.dataset +'theta.pkl'
-    f = open(theta_path, 'rb')
-    #pickle.dump(theta, f)
-
-    theta = pickle.load(f)
     s1 = np.sum(theta)
     theta = len(theta)/s1*theta
     theta = np.ravel(theta)

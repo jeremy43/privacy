@@ -31,14 +31,14 @@ import cov_shift
 FLAGS = tf.flags.FLAGS
 
 
-tf.flags.DEFINE_string('dataset', 'svhn', 'The name of the dataset to use')
-tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
+tf.flags.DEFINE_string('dataset', 'adult', 'The name of the dataset to use')
+tf.flags.DEFINE_integer('nb_labels', 2, 'Number of output classes')
 tf.flags.DEFINE_boolean('PATE2',True,'whether implement pate2')
-tf.flags.DEFINE_string('data_dir','/Users/yuqing/github_proj/privacy/research/data','Temporary storage')
-tf.flags.DEFINE_string('train_dir','/Users/yuqing/github_proj/privacy/research/model','Where model chkpt are saved')
-tf.flags.DEFINE_string('teachers_dir','/Users/yuqing/github_proj/privacy/research/model',
+tf.flags.DEFINE_string('data_dir','../data','Temporary storage')
+tf.flags.DEFINE_string('train_dir','../model','Where model chkpt are saved')
+tf.flags.DEFINE_string('teachers_dir','../model',
                        'Directory where teachers checkpoints are stored.')
-tf.flags.DEFINE_string('data','/Users/yuqing/github_proj/privacy/research/data/', 'where pca data are saved ')
+tf.flags.DEFINE_string('data','../data/', 'where pca data are saved ')
 tf.flags.DEFINE_integer('teachers_max_steps', 2500,
                         'Number of steps teachers were ran.')
 tf.flags.DEFINE_integer('max_steps', 3500, 'Number of steps to run student.')
@@ -98,7 +98,7 @@ def gaussian(nb_labels,clean_votes):
 
   # Cast labels to np.int32 for compatibility with deep_cnn.py feed dictionaries
   result = np.asarray(result, dtype=np.int32)
-  convert_vat(idx_keep, result)
+  #convert_vat(idx_keep, result)
   limit = len(result)
 
   return (idx_keep[0][:limit],), result[:limit]
@@ -214,12 +214,13 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
     FLAGS.sigma1) + '_sigma2:' + str(FLAGS.sigma2) + '.npy'  # NOLINT(long-line)
 
   # Prepare filepath for numpy dump of clean votes
-  filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes_lap_' + str(
+  filepath = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_student_clean_votes' + str(
     FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
 
   # Prepare filepath for numpy dump of clean labels
   filepath_labels = FLAGS.data_dir + "/" + str(dataset) + '_' + str(nb_teachers) + '_teachers_labels_lap_' + str(
     FLAGS.lap_scale) + '.npy'  # NOLINT(long-line)
+  """
   if os.path.exists(filepath):
     if FLAGS.PATE2 == True:
       with open(filepath,'rb')as f:
@@ -228,7 +229,7 @@ def prepare_student_data(dataset, nb_teachers, save=False, shift_data =None):
         precision_true = metrics.accuracy(result, test_labels[keep_idx])
         print('number of idx={}'.format(len(keep_idx[0])))
         return keep_idx, stdnt_data[keep_idx], result
-
+"""
 
   # Load the dataset
 
@@ -321,7 +322,6 @@ def dir_shift(stdnt_data, student_pred, stdnt_labels, alpha):
   shift_dataset['pred'] = shift_data
   shift_dataset['label'] = shift_label
   shift_dataset['alpha'] = alpha
-  shift_dataset['version'] = 'alpha'
   shift_dataset['data'] = stdnt_data[index]
   shift_dataset['index'] = index
   return shift_dataset
@@ -410,6 +410,11 @@ def train_student(dataset, nb_teachers, weight = True, inverse_w = None, shift_d
       keep_idx, stdnt_data, stdnt_labels = prepare_student_data(dataset, nb_teachers, save=True)
     else:
       stdnt_data, stdnt_labels = prepare_student_data(dataset, nb_teachers, save=True)
+  rng = np.random.RandomState(FLAGS.dataset_seed)
+  rand_ix = rng.permutation(len(stdnt_labels))
+  stdnt_data = stdnt_data[rand_ix]
+  stdnt_labels = stdnt_labels[rand_ix]
+  print('number for deep is {}'.format(len(stdnt_labels)))
   # Unpack the student dataset, here stdnt_labels are already the ensemble noisy version
   # Prepare checkpoint filename and path
   if FLAGS.deeper:
