@@ -21,7 +21,9 @@ import input  # pylint: disable=redefined-builtin
 import metrics
 import tensorflow as tf
 import numpy as np
+import pickle
 import aggregation
+from sklearn.decomposition import PCA, KernelPCA
 import autodp
 from autodp import rdp_bank,dp_acct, rdp_acct, privacy_calibrator
 from sklearn.neighbors import NearestNeighbors
@@ -34,11 +36,12 @@ tf.flags.DEFINE_string('train_dir','/tmp/train_dir',
                        'Where model ckpt are saved')
 tf.flags.DEFINE_integer('gau_scale',40,'gaussian noise scale')
 tf.flags.DEFINE_integer('max_steps', 3000, 'Number of training steps to run.')
-tf.flags.DEFINE_integer('nb_teachers', 200, 'Teachers in the ensemble.')
+tf.flags.DEFINE_integer('nb_teachers', 30, 'Teachers in the ensemble.')
 tf.flags.DEFINE_integer('teacher_id', 0, 'ID of teacher being trained.')
 tf.flags.DEFINE_integer('stdnt_share', 1000,
                         'Student share (last index) of the test data')
-
+tf.flags.DEFINE_integer('extra', 0,'remove extra samples from training to test')
+tf.flags.DEFINE_bool('pca', True, 'if true then apply pca as preprocessing')
 tf.flags.DEFINE_bool('knn',1,'if 1 then replace dnn with knn')
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
 
@@ -46,14 +49,33 @@ FLAGS = tf.flags.FLAGS
 prob = 0.2 # subsample probability for knn
 acct = rdp_acct.anaRDPacct()
 delta = 1e-8
-sigma = 40 #gaussian parameter
+sigma = FLAGS.gau_scale #gaussian parameter
 gaussian = lambda x: rdp_bank.RDP_gaussian({'sigma':sigma},x)
 
+def convert_vat(test_data, test_labels):
 
+  log = {}
+  log['labeled_train_images'] = test_data[:FLAGS.stdnt_share]
+  log['labeled_train_labels'] = test_labels[:FLAGS.stdnt_share]
+  log['train_images'] = test_data[FLAGS.stdnt_share:-1000]
+  log['train_labels'] = test_labels[FLAGS.stdnt_share:-1000]
+  #use the remaining 1000 point for test
+  log['test_images'] = test_data[-1000:]
+  log['test_labels'] = test_labels[-1000:]
+  file_vat = "../vat_tf/log/"+FLAGS.dataset+'_query='+str(FLAGS.stdnt_share)+'.pkl'
+  with open(file_vat,'wb') as f:
+    pickle.dump(log, f)
+def pca(teacher, student):
+  pca = PCA(n_components=60)
+  pca.fit(teacher)
+  max_component = pca.components_.T
+  teacher = np.dot(teacher, max_component)
+  student = np.dot(student, max_component)
+  return teacher, student
 def prepare_student_data(dataset, nb_teachers, save=False):
   """
   Takes a dataset name and the size of the teacher ensemble and prepares
-  training data for the student model, according to parameters indicated
+f  training data for the student model, according to parameters indicated
   in flags above.
   :param dataset: string corresponding to mnist, cifar10, or svhn
   :param nb_teachers: number of teachers (in the ensemble) to learn from
@@ -67,7 +89,9 @@ def prepare_student_data(dataset, nb_teachers, save=False):
 
   # Load the dataset
   if dataset == 'svhn':
-    train_data, train_labels,test_data, test_labels = input.ld_svhn()
+    train_data, train_labels,test_data, test_labels = input.ld_svhn(extended=True)
+    train_data = np.reshape(train_data, [-1, 32 * 32*3])
+    test_data = test_data.reshape([-1, 32 * 32*3])
   elif dataset == 'cifar10':
     train_data, train_labels, test_data, test_labels = input.ld_cifar10()
     train_data = np.reshape(train_data, [-1, 32 * 32*3])
@@ -82,10 +106,21 @@ def prepare_student_data(dataset, nb_teachers, save=False):
     return False
 
   # Make sure there is data leftover to be used as a test set
-  assert FLAGS.stdnt_share < len(test_data)
-
   # Prepare [unlabeled] student training data (subset of test set)
+  if FLAGS.extra >0:
+    test_data = np.vstack((test_data, train_data[:FLAGS.extra]))
+    test_labels = np.concatenate((test_labels,train_labels[:FLAGS.extra]))
+    print('test_label.shape',test_labels.shape)
+    train_data = train_data[FLAGS.extra:]
+    train_labels = train_labels[FLAGS.extra:]
+  print('train_size {} query_size {}'.format(train_data.shape[0], test_data.shape[0]))
+  ori_train_data = train_data
+  ori_test_data = test_data
+  if FLAGS.pca == True:
+    train_data, test_data = pca(train_data, test_data)
+
   stdnt_data = test_data[:FLAGS.stdnt_share]
+  assert FLAGS.stdnt_share < len(test_data)
 
 
   # Compute teacher predictions for student training data
@@ -132,11 +167,17 @@ def prepare_student_data(dataset, nb_teachers, save=False):
       np.save(file_obj, labels_for_dump)
 
   # Print accuracy of aggregated labels
+  print('accuracy issue stdnt_labels= {} test_labels={}'.format(stdnt_labels.shape, test_labels[:FLAGS.stdnt_share].shape))
   ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels[:FLAGS.stdnt_share])
   print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
   # Store unused part of test set for use as a test set after student training
-  stdnt_test_data = test_data[FLAGS.stdnt_share:]
+  # split some data point for semi-supervised training (VAT)
+  #default is the last 1k point for test, [stdnt_share: -1000] for vat
+
+  convert_vat(ori_test_data,test_labels)
+
+  stdnt_test_data = ori_test_data[FLAGS.stdnt_share:]
   stdnt_test_labels = test_labels[FLAGS.stdnt_share:]
 
   if save:
@@ -147,7 +188,7 @@ def prepare_student_data(dataset, nb_teachers, save=False):
     with tf.gfile.Open(filepath, mode='w') as file_obj:
       np.save(file_obj, stdnt_labels)
 
-  return stdnt_data, stdnt_labels, stdnt_test_data, stdnt_test_labels
+  return ori_test_data[:FLAGS.stdnt_share], stdnt_labels, stdnt_test_data, stdnt_test_labels
 
 def train_student(dataset, nb_teachers):
 
@@ -166,13 +207,16 @@ def train_student(dataset, nb_teachers):
 
   # Unpack the student dataset
   stdnt_data, stdnt_labels, stdnt_test_data, stdnt_test_labels = stdnt_dataset
-
+  print('stdnt_test_data.shape',stdnt_test_data.shape)
   if dataset == 'cifar10':
     stdnt_data = stdnt_data.reshape([-1,32,32,3])
     stdnt_test_data = stdnt_test_data.reshape([-1,32,32,3])
   elif dataset == 'mnist':
     stdnt_data = stdnt_data.reshape([-1, 28,28,1])
     stdnt_test_data = stdnt_test_data.reshape([-1, 28,28,1])
+  elif dataset == 'svhn':
+    stdnt_data = stdnt_data.reshape([-1,32,32,3])
+    stdnt_test_data = stdnt_test_data.reshape([-1, 32,32,3])
   # Prepare checkpoint filename and path
   if FLAGS.deeper:
     ckpt_path = FLAGS.train_dir + '/' + str(dataset) + '_' + str(nb_teachers) + '_student_deeper.ckpt' #NOLINT(long-line)
@@ -235,7 +279,6 @@ def train_teacher(dataset, nb_teachers, teacher_id):
   neigh = KNeighborsClassifier(n_neighbors=nb_teachers)
 
   neigh.fit(data,labels)
-  neigh.predict(data[1:4,:])
 
   # Append final step value to checkpoint for evaluation
 
