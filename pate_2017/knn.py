@@ -19,6 +19,7 @@ from __future__ import print_function
 import deep_cnn
 import input  # pylint: disable=redefined-builtin
 import metrics
+import os
 import tensorflow as tf
 import numpy as np
 import pickle
@@ -28,7 +29,7 @@ import autodp
 from autodp import rdp_bank,dp_acct, rdp_acct, privacy_calibrator
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors import KNeighborsClassifier
-tf.flags.DEFINE_string('dataset', 'mnist', 'The name of the dataset to use')
+tf.flags.DEFINE_string('dataset', 'svhn', 'The name of the dataset to use')
 tf.flags.DEFINE_integer('nb_labels', 10, 'Number of output classes')
 
 tf.flags.DEFINE_string('data_dir','/tmp','Temporary storage')
@@ -43,28 +44,31 @@ tf.flags.DEFINE_integer('stdnt_share', 1000,
 tf.flags.DEFINE_integer('extra', 0,'remove extra samples from training to test')
 tf.flags.DEFINE_bool('pca', True, 'if true then apply pca as preprocessing')
 tf.flags.DEFINE_bool('knn',1,'if 1 then replace dnn with knn')
+tf.flags.DEFINE_bool('vat',False,'whether use vat to lable query, only use after vat')
 tf.flags.DEFINE_boolean('deeper', False, 'Activate deeper CNN model')
 
 FLAGS = tf.flags.FLAGS
-prob = 0.2 # subsample probability for knn
+prob = 0.2 # subsample probability for i
 acct = rdp_acct.anaRDPacct()
 delta = 1e-8
 sigma = FLAGS.gau_scale #gaussian parameter
 gaussian = lambda x: rdp_bank.RDP_gaussian({'sigma':sigma},x)
 
-def convert_vat(test_data, test_labels):
+def convert_vat(test_data, test_labels,noisy_labels):
 
   log = {}
   log['labeled_train_images'] = test_data[:FLAGS.stdnt_share]
-  log['labeled_train_labels'] = test_labels[:FLAGS.stdnt_share]
+  log['labeled_train_labels'] = noisy_labels
   log['train_images'] = test_data[FLAGS.stdnt_share:-1000]
   log['train_labels'] = test_labels[FLAGS.stdnt_share:-1000]
   #use the remaining 1000 point for test
-  log['test_images'] = test_data[-1000:]
-  log['test_labels'] = test_labels[-1000:]
+  log['test_images'] = test_data[:-1000]
+  print('test_images.size',log['test_images'].shape)
+  log['test_labels'] = test_labels[:-1000]
   file_vat = "../vat_tf/log/"+FLAGS.dataset+'_query='+str(FLAGS.stdnt_share)+'.pkl'
   with open(file_vat,'wb') as f:
     pickle.dump(log, f)
+
 def pca(teacher, student):
   pca = PCA(n_components=60)
   pca.fit(teacher)
@@ -72,6 +76,7 @@ def pca(teacher, student):
   teacher = np.dot(teacher, max_component)
   student = np.dot(student, max_component)
   return teacher, student
+
 def prepare_student_data(dataset, nb_teachers, save=False):
   """
   Takes a dataset name and the size of the teacher ensemble and prepares
@@ -106,27 +111,51 @@ f  training data for the student model, according to parameters indicated
     return False
 
   # Make sure there is data leftover to be used as a test set
-  # Prepare [unlabeled] student training data (subset of test set)
+  """
+    If FLAGS.extra >0, means we remove the first FLAGS.extra data point from 
+  private dataset to student dataset. Default train_data is private.
+  
+    Ori_test_data records the original feature of test data, since we will apply 
+    PCA later.
+    
+    iF FLAGS.vat == True, then '..ckpt-2000.py' is the prediction of student queries(A+B) from VAT, (A+B) is defined later
+
+  """
+
   if FLAGS.extra >0:
     test_data = np.vstack((test_data, train_data[:FLAGS.extra]))
     test_labels = np.concatenate((test_labels,train_labels[:FLAGS.extra]))
-    print('test_label.shape',test_labels.shape)
+    #print('test_label.shape',test_labels.shape)
     train_data = train_data[FLAGS.extra:]
     train_labels = train_labels[FLAGS.extra:]
-  print('train_size {} query_size {}'.format(train_data.shape[0], test_data.shape[0]))
-  ori_train_data = train_data
+  #print('train_size {} query_size {}'.format(train_data.shape[0], test_data.shape[0]))
+
+
   ori_test_data = test_data
+
+  if FLAGS.vat == True and os.path.exists('record/svhn_model.ckpt-2000.npy'):
+    vat_labels = np.load('record/svhn_model.ckpt-2000.npy')
+    vat_labels = np.array(vat_labels, dtype=np.int32)
+    print('vat_label.shape', vat_labels.shape)
+    stdnt_test_data = ori_test_data[-1000:]
+    stdnt_test_labels = test_labels[-1000:]
+    return ori_test_data[:-1000], vat_labels, stdnt_test_data, stdnt_test_labels
+
   if FLAGS.pca == True:
     train_data, test_data = pca(train_data, test_data)
 
   stdnt_data = test_data[:FLAGS.stdnt_share]
   assert FLAGS.stdnt_share < len(test_data)
 
-
-  # Compute teacher predictions for student training data
+  """
+    Compute teacher predictions for student queries
+    There is a subsample scheme here, each query will subsample a prob*train_data for KNN, distance is based on Euclidean distance.
+    autodp is used track privacy loss(compose_subsample_mechanisms)
+    TO privately release every query, we add gaussian noise 
+  """
   num_train = train_data.shape[0]
   teachers_preds = np.zeros([stdnt_data.shape[0],FLAGS.nb_teachers])
-  major_vote = np.zeros(stdnt_data.shape[0])
+
   for idx in range(len(stdnt_data)):
     if idx %100 ==0:
       print('idx=',idx)
@@ -136,10 +165,9 @@ f  training data for the student model, according to parameters indicated
     k_index = select_teacher[np.argsort(dis)[:FLAGS.nb_teachers]]
     teachers_preds[idx] = train_labels[k_index]
     acct.compose_poisson_subsampled_mechanisms(gaussian, prob, coeff=1)
-  # Aggregate teacher predictions to get student training labels
+
 
   #compute privacy loss
-
   print("Composition of student  subsampled Gaussian mechanisms gives ", (acct.get_eps(delta), delta))
   teachers_preds = np.asarray(teachers_preds, dtype = np.int32)
 
@@ -166,19 +194,22 @@ f  training data for the student model, according to parameters indicated
     with tf.gfile.Open(filepath_labels, mode='w') as file_obj:
       np.save(file_obj, labels_for_dump)
 
-  # Print accuracy of aggregated labels
-  print('accuracy issue stdnt_labels= {} test_labels={}'.format(stdnt_labels.shape, test_labels[:FLAGS.stdnt_share].shape))
+
   ac_ag_labels = metrics.accuracy(stdnt_labels, test_labels[:FLAGS.stdnt_share])
   print("Accuracy of the aggregated labels: " + str(ac_ag_labels))
 
-  # Store unused part of test set for use as a test set after student training
-  # split some data point for semi-supervised training (VAT)
-  #default is the last 1k point for test, [stdnt_share: -1000] for vat
+  """
+  split  data point for semi-supervised training (VAT)
+  Suppose  original test data is SVHN, then split it into 3 part A, B, C
+  A has FLAGS.stdnt_share points, which are student queries answered by noisy KNN
+  B has test_data[FLAGS.stdnt_share:-1000] data point, which is used as unlabeled feature for VAT
+  C has the last 1k point for test
+  if don't use VAT, then ignore convert_vat
+  """
+  convert_vat(ori_test_data,test_labels,stdnt_labels)
 
-  convert_vat(ori_test_data,test_labels)
-
-  stdnt_test_data = ori_test_data[FLAGS.stdnt_share:]
-  stdnt_test_labels = test_labels[FLAGS.stdnt_share:]
+  stdnt_test_data = ori_test_data[-1000:]
+  stdnt_test_labels = test_labels[-1000:]
 
   if save:
     # Prepare filepath for numpy dump of labels produced by noisy aggregation
@@ -189,6 +220,7 @@ f  training data for the student model, according to parameters indicated
       np.save(file_obj, stdnt_labels)
 
   return ori_test_data[:FLAGS.stdnt_share], stdnt_labels, stdnt_test_data, stdnt_test_labels
+
 
 def train_student(dataset, nb_teachers):
 
@@ -237,65 +269,11 @@ def train_student(dataset, nb_teachers):
   print('Precision of student after training: ' + str(precision))
 
   return True
-def train_teacher(dataset, nb_teachers, teacher_id):
-  """
-  This function trains a teacher (teacher id) among an ensemble of nb_teachers
-  models for the dataset specified.
-  :param dataset: string corresponding to dataset (svhn, cifar10)
-  :param nb_teachers: total number of teachers in the ensemble
-  :param teacher_id: id of the teacher being trained
-  :return: True if everything went well
-  """
-  # If working directories do not exist, create them
-  assert input.create_dir_if_needed(FLAGS.data_dir)
-  assert input.create_dir_if_needed(FLAGS.train_dir)
 
-  # Load the dataset
-  if dataset == 'svhn':
-    train_data,train_labels,test_data,test_labels = input.ld_svhn(extended=True)
-  elif dataset == 'cifar10':
-    train_data, train_labels, test_data, test_labels = input.ld_cifar10()
-  elif dataset == 'mnist':
-    train_data, train_labels, test_data, test_labels = input.ld_mnist()
-    train_data = np.reshape(train_data, [-1, 28 * 28])
-    test_data = test_data.reshape([-1,28*28])
-  else:
-    print("Check value of dataset flag")
-    return False
+def main(argv=None):
 
-  # Retrieve subset of data for this teacher
-  data, labels = input.partition_dataset(train_data,
-                                         train_labels,
-                                         nb_teachers,
-                                         teacher_id)
-
-  print("Length of training data: " + str(len(labels)))
-
-  # Define teacher checkpoint filename and full path
-
-
-  data = data[:2000,:]
-  labels = labels[:2000]
-  neigh = KNeighborsClassifier(n_neighbors=nb_teachers)
-
-  neigh.fit(data,labels)
-
-  # Append final step value to checkpoint for evaluation
-
-  # Retrieve teacher probability estimates on the test data
-  teacher_preds = neigh.predict(test_data)
-
-  # Compute teacher accuracy
-  precision = metrics.accuracy(teacher_preds, test_labels)
-  print('Precision of teacher after training: ' + str(precision))
-
-  return neigh
-
-
-def main(argv=None):  # pylint: disable=unused-argument
-  # Make a call to train_teachers with values specified in flags
   train_student(FLAGS.dataset, FLAGS.nb_teachers)
-  #assert train_teacher(FLAGS.dataset, FLAGS.nb_teachers, FLAGS.teacher_id)
+
 
 if __name__ == '__main__':
   tf.app.run()
